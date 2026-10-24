@@ -1,10 +1,10 @@
 {
   "schemaVersion": "1.1",
   "status": "ready",
-  "generatedAt": "2026-10-24T14:27:58.761Z",
-  "lastAttemptAt": "2026-10-24T12:05:45.955Z",
-  "lastSuccessfulScan": "2026-10-24T12:05:45.955Z",
-  "galleryUpdatedThrough": "2026-10-24T06:00:01.06",
+  "generatedAt": "2026-10-24T23:12:28.302Z",
+  "lastAttemptAt": "2026-10-24T22:49:11.324Z",
+  "lastSuccessfulScan": "2026-10-24T22:49:11.324Z",
+  "galleryUpdatedThrough": "2026-10-24T10:00:01.497",
   "advisoriesUpdatedAt": null,
   "bootstrap": {
     "complete": true,
@@ -12,27 +12,27 @@
     "startedAt": "2026-10-24T07:55:34.501Z"
   },
   "reconciliation": {
-    "afterId": "Akamai.MOKS"
+    "afterId": "ArielAuxFn"
   },
   "resultRefresh": {
     "id": "binary-dependency-2026-10",
     "complete": false,
-    "afterKey": "",
+    "afterKey": "addsactiveaccountaudit@1.2.0",
     "total": 17834
   },
   "freshnessWindowHours": 6,
   "coverage": {
     "listedPackages": 16895,
     "scannedLatestVersions": 16895,
-    "scannedVersions": 17834,
-    "incompleteVersions": 5428,
+    "scannedVersions": 17894,
+    "incompleteVersions": 5299,
     "unscannedLatestVersions": 0,
-    "notScannedVersions": 622966,
-    "binaryFiles": 57501,
-    "binaryFilesChecked": 0,
-    "binaryFilesPending": 57501,
+    "notScannedVersions": 622906,
+    "binaryFiles": 59044,
+    "binaryFilesChecked": 3483,
+    "binaryFilesPending": 55561,
     "binaryScanErrors": 0,
-    "missingGalleryDependencies": 483
+    "missingGalleryDependencies": 515
   },
   "shards": [
     "shards/00.json",
@@ -166,12 +166,15 @@
     "state/62.json.gz",
     "state/63.json.gz"
   ],
-  "notice": "Some package results are incomplete; review per-version coverage details.",
+  "notice": "",
   "sourceStatus": "available",
   "lastBatch": {
-    "attemptedAt": "2026-10-24T12:05:45.955Z",
-    "packageVersionsProcessed": 1155,
-    "packageVersionsSkipped": 45,
+    "attemptedAt": "2026-10-24T22:49:11.324Z",
+    "packageVersionsProcessed": 1399,
+    "packageVersionsSkipped": 0,
+    "resultRefreshProcessed": 200,
+    "resultRefreshComplete": false,
+    "resultRefreshRemaining": 17634,
     "bootstrapComplete": true,
     "advisoryRecordsRefreshed": 0,
     "advisoryRefreshRemaining": 0
