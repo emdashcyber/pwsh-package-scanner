@@ -39,7 +39,7 @@ The dashboard supports search and assessment/severity filters, and fetches versi
 
 ## Local use
 
-Requirements: Node.js 24, PowerShell 7.6.8, and PSScriptAnalyzer 1.25.0 for complete PowerShell analysis.
+Requirements: Node.js 26, PowerShell 7.6.8, and PSScriptAnalyzer 1.25.0 for complete PowerShell analysis.
 
 Install site dependencies and run the dashboard:
 
