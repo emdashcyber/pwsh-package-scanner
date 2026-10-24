@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveDependencyGraph } from '../scanner/dependencies.js';
 import { scanAdvisoriesForVersion } from '../scanner/advisories.js';
+import { scanGalleryPackage } from '../scanner/package-scanner.js';
+import { createZip, packageEntries } from './helpers/zip-fixture.js';
 
 test('dependency graph resolves the highest matching version range and transitive dependencies', async () => {
   const packages = {
@@ -20,13 +22,51 @@ test('dependency graph resolves the highest matching version range and transitiv
   ]);
 });
 
-test('dependency graph flags unsupported ranges and unresolved package identities', async () => {
+test('dependency graph distinguishes Gallery-missing packages from unsupported ranges', async () => {
   const graph = await resolveDependencyGraph([
     { name: 'Unknown', versionRange: 'workspace:^' },
     { name: 'Missing', versionRange: '[1.0.0,2.0.0)' },
   ], { listPackageVersions: async () => [] });
   assert.equal(graph.complete, false);
-  assert.deepEqual(graph.dependencies.map((item) => item.status), ['unsupported_range', 'no_matching_version']);
+  assert.deepEqual(graph.dependencies.map((item) => item.status), ['unsupported_range', 'package_not_found']);
+  assert.equal(graph.dependencies[1].relation, 'requires');
+});
+
+test('dependency graph records a missing Gallery package only after a successful lookup', async () => {
+  const graph = await resolveDependencyGraph([{ name: 'Missing', versionRange: '*' }], {
+    listPackageVersions: async () => [],
+  });
+  assert.equal(graph.complete, true);
+  assert.equal(graph.dependencies[0].status, 'package_not_found');
+  const failed = await resolveDependencyGraph([{ name: 'Transient', versionRange: '*' }], {
+    listPackageVersions: async () => { const error = new Error('upstream failure'); error.status = 503; throw error; },
+  });
+  assert.equal(failed.complete, false);
+  assert.equal(failed.dependencies[0].status, 'gallery_unavailable');
+});
+
+test('ModuleList containment is recorded as bundled without a false missing-dependency finding', async () => {
+  const graph = await resolveDependencyGraph([{
+    name: 'Az.Accounts', versionRange: '*', relation: 'contains', declarationSources: ['ModuleList'],
+  }], { listPackageVersions: async () => [] });
+  assert.equal(graph.complete, true);
+  assert.equal(graph.dependencies[0].status, 'bundled');
+  assert.equal(graph.dependencies[0].relation, 'contains');
+});
+
+test('a Gallery-missing required package emits a scoped dependency finding', async () => {
+  const bytes = createZip(packageEntries({ dependencyXml: '<dependencies><dependency id="Missing" version="*" /></dependencies>' }));
+  const result = await scanGalleryPackage({ name: 'Example', version: '1.0.0' }, {
+    downloadPackage: async () => bytes,
+    resolveDependencyGraph: async () => ({ dependencies: [{
+      name: 'Missing', versionRange: '*', relation: 'requires', status: 'package_not_found',
+      declarationSources: ['nuspec'], file: null, line: null,
+    }], complete: true }),
+  }, { runPssa: false, scanAdvisories: false });
+  const finding = result.findings.find((item) => item.id === 'PSG-DEPENDENCY-001');
+  assert.ok(finding);
+  assert.match(finding.description, /private repository/);
+  assert.equal(result.assessment, 'complete');
 });
 
 test('OSV fixed-version ranges match affected NuGet identities and carry high confidence', async () => {

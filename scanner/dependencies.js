@@ -19,12 +19,17 @@ export async function resolveDependencyGraph(declaredDependencies, gallery, {
 
   while (queue.length && resolved.length < maxNodes) {
     const current = queue.shift();
-    const key = current.name.toLocaleLowerCase('en-US') + '@' + current.versionRange + '#' + (current.parent || '');
+    const relation = current.relation || 'requires';
+    const key = current.name.toLocaleLowerCase('en-US') + '@' + current.versionRange + '#' + relation + '#' + (current.parent || '');
     if (seen.has(key)) continue;
     seen.add(key);
     const record = {
       name: current.name,
       versionRange: current.versionRange || '*',
+      relation,
+      declarationSources: current.declarationSources || [],
+      file: current.file || null,
+      line: Number.isInteger(current.line) ? current.line : null,
       parent: current.parent,
       depth: current.depth,
       status: 'unresolved',
@@ -32,6 +37,11 @@ export async function resolveDependencyGraph(declaredDependencies, gallery, {
       sourceEcosystem: 'NuGet',
     };
 
+    if (relation === 'contains') {
+      record.status = 'bundled';
+      resolved.push(record);
+      continue;
+    }
     if (current.depth > maxDepth) {
       record.status = 'depth_limit';
       incomplete = true;
@@ -48,9 +58,14 @@ export async function resolveDependencyGraph(declaredDependencies, gallery, {
     let available;
     try {
       available = await gallery.listPackageVersions(current.name);
-    } catch {
-      record.status = 'gallery_unavailable';
-      incomplete = true;
+    } catch (error) {
+      record.status = error?.status === 404 ? 'package_not_found' : 'gallery_unavailable';
+      if (record.status !== 'package_not_found') incomplete = true;
+      resolved.push(record);
+      continue;
+    }
+    if (!available.length) {
+      record.status = 'package_not_found';
       resolved.push(record);
       continue;
     }
@@ -62,7 +77,6 @@ export async function resolveDependencyGraph(declaredDependencies, gallery, {
     const selected = candidates.at(-1);
     if (!selected) {
       record.status = 'no_matching_version';
-      incomplete = true;
       resolved.push(record);
       continue;
     }
@@ -79,6 +93,8 @@ export async function resolveDependencyGraph(declaredDependencies, gallery, {
         }
         queue.push({
           ...dependency,
+          relation: dependency.relation || 'requires',
+          declarationSources: dependency.declarationSources || ['gallery'],
           parent: current.name + '@' + selected,
           depth: current.depth + 1,
         });
@@ -92,6 +108,10 @@ export async function resolveDependencyGraph(declaredDependencies, gallery, {
       resolved.push({
         name: item.name,
         versionRange: item.versionRange || '*',
+        relation: item.relation || 'requires',
+        declarationSources: item.declarationSources || [],
+        file: item.file || null,
+        line: Number.isInteger(item.line) ? item.line : null,
         parent: item.parent,
         depth: item.depth,
         status: 'node_limit',

@@ -3,6 +3,8 @@ name: Gallery research scan
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'site/public/api/v1/**'
   schedule:
     - cron: '17 * * * *'
     - cron: '43 23 * * *'
@@ -22,7 +24,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  scan-and-build:
+  scan:
     runs-on: ubuntu-26.04
     permissions:
       contents: read
@@ -33,8 +35,6 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 26
-          cache: npm
-          cache-dependency-path: site/package-lock.json
       - name: Install PowerShell 7.6.8
         shell: bash
         run: |
@@ -57,18 +57,116 @@ jobs:
           Save-PSResource -Name PSScriptAnalyzer -Version 1.25.0 -Repository PSGallery -Path $modulePath -TrustRepository
           "PSSCRIPTANALYZER_MODULE_PATH=$modulePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "PowerShell: $($PSVersionTable.PSVersion) · PSScriptAnalyzer: $((Get-Module -ListAvailable PSScriptAnalyzer | Where-Object Version -eq '1.25.0' | Select-Object -First 1).Version)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      - name: Install and refresh ClamAV signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes clamav clamav-daemon
+          sudo systemctl stop clamav-freshclam.service || true
+          sudo freshclam --stdout
+          if ! sudo grep -q '^LocalSocket ' /etc/clamav/clamd.conf; then
+            echo 'LocalSocket /run/clamav/clamd.ctl' | sudo tee -a /etc/clamav/clamd.conf >/dev/null
+          fi
+          sudo sed -i 's/^#LocalSocketMode.*/LocalSocketMode 666/' /etc/clamav/clamd.conf
+          if ! sudo grep -q '^LocalSocketMode ' /etc/clamav/clamd.conf; then
+            echo 'LocalSocketMode 666' | sudo tee -a /etc/clamav/clamd.conf >/dev/null
+          fi
+          sudo systemctl restart clamav-daemon.service
+          for attempt in $(seq 1 60); do
+            if clamdscan --ping=3 >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          clamdscan --ping=3
+          clamdscan --version | tee -a "$GITHUB_STEP_SUMMARY"
+          db_versions=()
+          db_dates=()
+          for database in /var/lib/clamav/{main,daily,bytecode}.{cld,cvd}; do
+            [[ -f "$database" ]] || continue
+            info="$(sudo sigtool --info "$database")"
+            version="$(awk -F': ' '$1 == "Version" { print $2; exit }' <<< "$info")"
+            build_date="$(awk -F': ' '$1 == "Build time" { print $2; exit }' <<< "$info")"
+            label="$(basename "${database%.*}")"
+            [[ -n "$version" ]] && db_versions+=("$label:$version")
+            [[ -n "$build_date" ]] && db_dates+=("$label:$build_date")
+          done
+          ((${#db_versions[@]} > 0)) || { echo "No ClamAV signature database version found." >&2; exit 1; }
+          printf -v version_list '%s,' "${db_versions[@]}"
+          printf -v date_list '%s,' "${db_dates[@]}"
+          echo "CLAMAV_DATABASE_VERSION=${version_list%,}" >> "$GITHUB_ENV"
+          echo "CLAMAV_DATABASE_DATE=${date_list%,}" >> "$GITHUB_ENV"
       - run: npm ci --prefix site --ignore-scripts --no-audit --no-fund
       - name: Scan Gallery and write static API snapshot
         env:
           REFRESH_ADVISORIES: ${{ github.event.schedule == '43 23 * * *' || inputs.refresh_advisories }}
+          CLAMAV_SCAN_COMMAND: clamdscan
+          RESULT_REFRESH_BATCH_SIZE: 200
         run: npm run scan
+      - name: Validate generated API snapshot
+        run: node scripts/validate-api-snapshot.js site/public/api/v1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gallery-api-snapshot
+          path: site/public/api/v1
+          if-no-files-found: error
+          retention-days: 3
+
+  commit-data:
+    needs: scan
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          name: gallery-api-snapshot
+          path: ${{ runner.temp }}/api-v1
+      - name: Validate and commit changed scan data
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/validate-api-snapshot.js "$RUNNER_TEMP/api-v1"
+          rm -rf site/public/api/v1
+          mkdir -p site/public/api/v1
+          cp -a "$RUNNER_TEMP/api-v1/." site/public/api/v1/
+          git add site/public/api/v1
+          if git diff --cached --quiet -- site/public/api/v1; then
+            echo "No scan data changed; the checked-in snapshot is already current." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update PowerShell Gallery scan data"
+          git push origin HEAD:main
+          echo "Committed changed catalog, state, manifest, and result documents to main." >> "$GITHUB_STEP_SUMMARY"
+
+  build-and-deploy:
+    needs: commit-data
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci --prefix site --ignore-scripts --no-audit --no-fund
       - run: npm run build --prefix site
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site/dist
 
   deploy:
-    needs: scan-and-build
+    needs: build-and-deploy
     runs-on: ubuntu-26.04
     permissions:
       pages: write

@@ -84,13 +84,28 @@ export function parseGalleryDependencies(value) {
 }
 
 export function dedupeDependencies(items) {
-  const seen = new Set();
-  return items.filter((dependency) => {
-    const key = String(dependency.name).toLocaleLowerCase('en-US') + '\0' + String(dependency.versionRange || '*');
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const byKey = new Map();
+  for (const dependency of items || []) {
+    const relation = dependency.relation || 'requires';
+    const key = String(dependency.name).toLocaleLowerCase('en-US') + '\0'
+      + String(dependency.versionRange || '*') + '\0' + relation;
+    const existing = byKey.get(key);
+    if (!existing) {
+      const clone = { ...dependency };
+      if (Array.isArray(dependency.declarationSources)) clone.declarationSources = [...new Set(dependency.declarationSources)];
+      byKey.set(key, clone);
+    } else {
+      if (existing.declarationSources || dependency.declarationSources) {
+        existing.declarationSources = [...new Set([
+          ...(existing.declarationSources || []),
+          ...(dependency.declarationSources || []),
+        ])];
+      }
+      if (!existing.file && dependency.file) existing.file = dependency.file;
+      if (!existing.line && dependency.line) existing.line = dependency.line;
+    }
+  }
+  return [...byKey.values()];
 }
 
 export function parseGalleryFeed(xml) {

@@ -108,6 +108,66 @@ test('upstream failures leave the last successful timestamp and package data int
   assert.equal(state.packages.get('example').versions[0].packageSha256, 'a'.repeat(64));
 });
 
+test('package-level incomplete checks do not degrade service health and failed first scans retry', async () => {
+  const state = emptyState();
+  state.manifest.bootstrap = { complete: true, afterId: '', startedAt: null };
+  const outcome = await runScanCycle({
+    state,
+    gallery: {
+      listUpdatedSince: async () => [item],
+      listLatestAfter: async () => [],
+      downloadPackage: async () => { throw new Error('Package endpoint timed out'); },
+    },
+    runPssa: false,
+  });
+  assert.equal(outcome.feedSucceeded, true);
+  assert.equal(state.manifest.status, 'ready');
+  assert.equal(state.manifest.sourceStatus, 'available');
+  assert.equal(buildCoverage(state).incompleteVersions, 1);
+  const recovered = await runScanCycle({
+    state,
+    gallery: {
+      listUpdatedSince: async () => [item],
+      listLatestAfter: async () => [],
+      downloadPackage: async () => createZip(packageEntries()),
+      resolveDependencyGraph: async () => ({ dependencies: [], complete: true }),
+    },
+    fetcher: async (url, options) => String(url).endsWith('/querybatch')
+      ? Response.json({ results: JSON.parse(options.body).queries.map(() => ({ vulns: [] })) })
+      : new Response('unexpected', { status: 404 }),
+    runPssa: false,
+  });
+  assert.equal(recovered.state.packages.get('example').versions[0].assessment, 'complete');
+});
+
+test('existing-result refresh advances across saved batches and marks completion only at the end', async () => {
+  const state = emptyState();
+  state.manifest.bootstrap = { complete: true, afterId: '', startedAt: null };
+  const older = { ...item, version: '0.9.0', isAbsoluteLatest: false };
+  mergePackageVersion(state, item, snapshot());
+  mergePackageVersion(state, older, snapshot(older));
+  const bytes = createZip(packageEntries());
+  let downloads = 0;
+  const gallery = {
+    listUpdatedSince: async () => [],
+    listLatestAfter: async () => [],
+    downloadPackage: async () => { downloads++; return bytes; },
+    resolveDependencyGraph: async () => ({ dependencies: [], complete: true }),
+  };
+  const fetcher = async (url, options) => String(url).endsWith('/querybatch')
+    ? Response.json({ results: JSON.parse(options.body).queries.map(() => ({ vulns: [] })) })
+    : new Response('unexpected', { status: 404 });
+  const first = await runScanCycle({ state, gallery, fetcher, runPssa: false, resultRefreshBatchSize: 1 });
+  assert.equal(first.state.manifest.resultRefresh.complete, false);
+  assert.equal(first.state.manifest.lastBatch.resultRefreshProcessed, 1);
+  const firstCursor = first.state.manifest.resultRefresh.afterKey;
+  assert.ok(firstCursor);
+  const second = await runScanCycle({ state, gallery, fetcher, runPssa: false, resultRefreshBatchSize: 1 });
+  assert.equal(second.state.manifest.resultRefresh.complete, true);
+  assert.notEqual(second.state.manifest.resultRefresh.afterKey, firstCursor);
+  assert.equal(downloads, 2);
+});
+
 test('a failed rescan preserves the last-good result for an existing package version', async () => {
   const state = emptyState();
   state.manifest.status = 'ready';
@@ -149,14 +209,17 @@ test('advisory refresh cursor does not skip records after OSV failures', async (
   });
   assert.equal(outcome.advisoryRefresh.complete, false);
   assert.equal(state.manifest.advisoryRefreshCursor || '', '');
-  assert.equal(state.manifest.status, 'degraded');
+  assert.equal(state.manifest.status, 'ready');
 });
 
 test('published API snapshot contains searchable catalog shards and per-version results', async () => {
   const root = await mkdtemp(join(tmpdir(), 'gallery-snapshot-test-'));
   try {
     const state = emptyState();
-    mergePackageVersion(state, item, snapshot());
+    mergePackageVersion(state, item, snapshot(item, { findings: [
+      { id: 'PSG-SECRET-001', severity: 'high' },
+      { id: 'PSSA-PSAvoidUsingInvokeExpression', severity: 'medium' },
+    ] }));
     addNotScannedVersion(state, { ...item, version: '0.9.0', publishedAt: '2025-09-01T00:00:00Z' });
     assert.equal(state.packages.get('example').versions.find((version) => version.version === '0.9.0').metadata.description, undefined);
     const publicDirectory = join(root, 'public');
@@ -170,11 +233,16 @@ test('published API snapshot contains searchable catalog shards and per-version 
     const shard = JSON.parse(await readFile(join(apiRoot, manifest.shards[0]), 'utf8'));
     assert.equal(shard.packages[0].name, 'Example');
     assert.equal(shard.packages[0].latestAssessment, 'complete');
+    assert.equal(shard.packages[0].totalFindingCount, 2);
+    assert.deepEqual(shard.packages[0].versions.find((version) => version.version === '1.0.0').findingIds, [
+      'PSG-SECRET-001', 'PSSA-PSAvoidUsingInvokeExpression',
+    ]);
     const olderSummary = shard.packages[0].versions.find((version) => version.version === '0.9.0');
     assert.equal(olderSummary.assessment, 'not_scanned');
     assert.equal(olderSummary.resultPath, undefined);
     assert.equal(olderSummary.publishedAt, '2025-09-01T00:00:00Z');
     const result = JSON.parse(await readFile(join(apiRoot, resultPath('Example', '1.0.0')), 'utf8'));
+    assert.equal(result.schemaVersion, '1.1');
     assert.match(resultPath('Example', '1.0.0'), /^packages\/[0-9a-f]{2}\/.+\/.+\.json$/);
     assert.equal(result.packageSha256, 'a'.repeat(64));
     assert.equal(result.assessment, 'complete');
@@ -266,18 +334,20 @@ test('local bootstrap resumes from its saved snapshot across batches', async () 
   }
 });
 
-test('initial scan uses a checked-in local snapshot when Pages has no manifest', async () => {
+test('checked-in snapshot is preferred over a potentially lagging Pages copy', async () => {
   const root = await mkdtemp(join(tmpdir(), 'gallery-local-fallback-'));
   const publicDirectory = join(root, 'public');
   try {
     const state = emptyState();
     mergePackageVersion(state, item, snapshot());
     await writeSnapshot(state, publicDirectory);
+    let pageFetches = 0;
     const loaded = await loadScanState('https://example.test/api/v1/', {
       publicDirectory,
-      fetcher: async () => new Response('', { status: 404 }),
+      fetcher: async () => { pageFetches++; throw new Error('Pages copy should not be needed.'); },
     });
     assert.equal(loaded.source, 'local');
+    assert.equal(pageFetches, 0);
     assert.equal(loaded.state.packages.get('example').versions[0].assessment, 'complete');
   } finally {
     await rm(root, { recursive: true, force: true });

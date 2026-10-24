@@ -10,11 +10,13 @@ Automated findings are evidence-backed research signals. A complete scan with no
 
 - Scans the latest version of each listed package for the initial baseline, then observes new and updated versions. Pre-launch versions other than the latest remain explicitly unscanned.
 - Polls the PowerShell Gallery hourly on a best-effort basis, using an overlapping update window, deduplication, and rolling metadata reconciliation.
-- Inspects `.nupkg` metadata, dependencies, archive inventory, version-to-version metadata and file changes, and PowerShell syntax trees. It combines pinned PSScriptAnalyzer checks with project-maintained static rules.
+- Inspects `.nupkg` metadata, package manifests, dependency declarations, archive inventory, version-to-version metadata and file changes, and PowerShell syntax trees. It combines pinned PSScriptAnalyzer checks with project-maintained static rules.
+- Reads `RequiredModules` and `ModuleList` from `.psd1` files and `#Requires -Modules` from scripts. `ModuleList` is represented as a contains edge; required declarations are checked against Gallery package and version listings.
+- Hashes supported binary files, scans them with ClamAV using refreshed signatures, and publishes VirusTotal hash-search links. Files are never uploaded to VirusTotal.
 - Resolves bounded dependency graphs and queries OSV for supported NuGet package identities. Curated PowerShell Gallery advisories live in `advisories/powershell-gallery.json`.
 - Publishes `complete`, `incomplete`, and `not_scanned` states, coverage counts, timestamps, findings, redacted evidence, references, and package SHA-256 hashes.
 
-The scanner never installs, imports, or executes Gallery package content. ZIP entries are analyzed in memory with limits on archive size, entry count, expanded size, per-file size, and compression ratio. PowerShell static analysis runs in a temporary directory with a restricted environment. Unrecognized dependency identities, unsupported ranges, binary files, and upstream failures are reflected as coverage gaps.
+The scanner never installs, imports, or executes Gallery package content. ZIP entries are analyzed in memory with limits on archive size, entry count, expanded size, per-file size, and compression ratio. PowerShell static analysis and binary checks run in temporary directories with a restricted environment. Unrecognized dependency identities, unsupported ranges, failed binary scans, and upstream failures are reflected as coverage gaps.
 
 ## Repository layout
 
@@ -35,11 +37,11 @@ Known pre-launch versions are listed as `not_scanned` in the catalog with known 
 
 The manifest also references `state/{shard}.json` persistence shards. These are publicly readable because GitHub Pages is static; the scanner loads them to merge new findings with the last published snapshot. Treat these as implementation data, not a stable consumer API.
 
-The dashboard supports search and assessment/severity filters, and fetches version findings on demand. A complete version with an empty findings list displays “No findings detected.” Incomplete and unscanned versions are shown separately.
+The dashboard supports package search, finding-ID filters across scanned versions, assessment/severity filters, and sorting by latest scan time, name, or total findings. It displays per-version dependency graphs, scan dates, binary hashes, ClamAV results, and VirusTotal hash-search links. A complete version with an empty findings list displays “No findings detected.” Incomplete and unscanned versions are shown separately.
 
 ## Local use
 
-Requirements: Node.js 26, PowerShell 7.6.8, and PSScriptAnalyzer 1.25.0 for complete PowerShell analysis.
+Requirements: Node.js 26, PowerShell 7.6.8, and PSScriptAnalyzer 1.25.0 for complete PowerShell analysis. Install ClamAV and refresh its signatures for complete binary coverage.
 
 Install site dependencies and run the dashboard:
 
@@ -57,7 +59,7 @@ npm run scan:bootstrap:local
 
 The command reads and resumes the snapshot under `site/public/api/v1/`, processes 200 latest packages per batch by default, and writes a new snapshot after each batch until the Gallery baseline is complete. It then runs one incremental and reconciliation pass to catch changes published during the baseline. If interrupted or a Gallery feed fails, run it again to resume. A feed failure exits non-zero after saving the last completed batch. Set `BOOTSTRAP_BATCH_SIZE` or `SCAN_CONCURRENCY` to tune the batch size or concurrency. Set `PSSCRIPTANALYZER_MODULE_PATH` to the directory containing the pinned PSScriptAnalyzer module if it is not in the default PowerShell module path.
 
-The local snapshot is tracked in Git so the first Pages deployment starts with the completed baseline. After deployment, the regular scan command loads state from the published API; if no published manifest exists yet, it falls back to the checked-in local snapshot. Set `PSGALLERY_API_ROOT` to use a compatible test Gallery endpoint or `SCAN_STATE_API_URL` to choose another published state API. Set `PSSCRIPTANALYZER_ENABLED=false` only for local experiments; those results do not include the pinned analyzer checks.
+The local snapshot in Git is the scanner's state source of truth. Each workflow run merges with that checked-in snapshot, writes scan results under `site/public/api/v1/`, validates and commits only changed API data, then builds and deploys the same snapshot. Set `PSGALLERY_API_ROOT` to use a compatible test Gallery endpoint. Set `PSSCRIPTANALYZER_ENABLED=false` only for local experiments; those results do not include the pinned analyzer checks. Set `CLAMAV_SCAN_COMMAND` to `clamscan` or `clamdscan` and `CLAMAV_DATABASE_VERSION`/`CLAMAV_DATABASE_DATE` to report local signature metadata.
 
 Build and preview the static site from `site/`:
 
@@ -70,9 +72,9 @@ From the repository root, `npm test` runs scanner fixtures, `npm --prefix site t
 
 ## GitHub Actions and deployment
 
-`.github/workflows/research-scan.yml` runs on pushes to `main`, hourly at minute 17 UTC, and daily at 23:43 UTC. The daily run refreshes OSV matches; maintainers can request that refresh during a manual run. The workflow installs pinned PowerShell 7.6.8 and PSScriptAnalyzer 1.25.0, scans without application secrets, builds the site from `site/`, and deploys `site/dist` with GitHub Pages. `.github/workflows/validate.yml` runs the offline checks for pull requests.
+`.github/workflows/research-scan.yml` runs on code pushes to `main`, hourly at minute 17 UTC, and daily at 23:43 UTC. The daily run refreshes OSV matches; maintainers can request that refresh during a manual run. The read-only scan job installs pinned PowerShell 7.6.8 and PSScriptAnalyzer 1.25.0 plus ClamAV with refreshed signatures. A separate job validates and commits changed API data with `contents: write`; the final job builds the committed snapshot from `site/` and deploys `site/dist`. Data-only commits do not retrigger scans. `.github/workflows/validate.yml` runs the offline checks for pull requests.
 
-GitHub Actions schedules are best-effort. The dashboard marks the service stale after two hours without a successful Gallery poll and displays the last attempt, last successful scan, and current coverage. A failed workflow leaves the previously deployed Pages site available.
+GitHub Actions schedules are best-effort. The dashboard marks the service stale after six hours without a successful scan and displays the last attempt, last successful scan, package coverage, and any in-progress refresh of older scanned versions. Package-level incomplete checks do not degrade the Gallery service status. A failed workflow leaves the previously deployed Pages site available.
 
 To publish, create or use the public repository `emdashcyber/pwsh-package-scanner`, set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**, and push this project to its `main` branch. The project site uses `/pwsh-package-scanner/` as its Astro base path and the EmDash Cyber custom domain.
 

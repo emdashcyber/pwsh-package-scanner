@@ -57,6 +57,16 @@ test('Gallery retries transient failures with bounded backoff', async () => {
   assert.ok(waits[0] <= 30_000);
 });
 
+test('Gallery preserves not-found responses for dependency resolution without retrying', async () => {
+  let calls = 0;
+  const client = new GalleryClient({
+    apiRoot: 'https://gallery.test/api/v2',
+    fetcher: async () => { calls++; return new Response('missing', { status: 404 }); },
+  });
+  await assert.rejects(client.listPackageVersions('Missing'), (error) => error.status === 404);
+  assert.equal(calls, 1);
+});
+
 test('historical version cache is bounded and can be cleared between scan batches', async () => {
   const client = new GalleryClient({
     apiRoot: 'https://gallery.test/api/v2',

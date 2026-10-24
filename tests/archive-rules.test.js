@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { ARCHIVE_LIMITS, inspectNupkg } from '../scanner/zip.js';
 import { analyzePowerShellBehavior, normalizePSScriptAnalyzerFindings, redactFinding } from '../scanner/rules.js';
 import { scanGalleryPackage } from '../scanner/package-scanner.js';
+import { scanBinaryEntries } from '../scanner/binary-scanner.js';
+import { sha256 } from '../scanner/util.js';
 import { createZip, packageEntries } from './helpers/zip-fixture.js';
 
 test('valid nupkg is inspected without executing the PowerShell payload', async () => {
@@ -62,6 +64,61 @@ test('path traversal entries are ignored and mark archive coverage incomplete', 
   assert.equal(archive.complete, false);
   assert.equal(archive.files.length, 0);
   assert.ok(archive.warnings.some((item) => item.includes('Unsafe archive')));
+});
+
+test('binary entries are safely extracted, hashed, and linked to VirusTotal hash search', async () => {
+  const bytes = Buffer.from([0, 1, 2, 255, 9]);
+  const archive = inspectNupkg(createZip([
+    { name: 'Example.nuspec', content: '<package><metadata><id>Example</id><version>1.0.0</version></metadata></package>' },
+    { name: 'tools/native.dll', content: bytes },
+  ]));
+  assert.equal(archive.complete, true);
+  assert.equal(archive.binaries.length, 1);
+  assert.deepEqual(archive.binaries[0].content, bytes);
+  const result = await scanBinaryEntries(archive.binaries, {
+    scanner: async () => ({ status: 'clean', engineVersion: '1.4.0', databaseVersion: '12345', databaseDate: '2026-10-25' }),
+  });
+  assert.equal(result.complete, true);
+  assert.equal(result.binaries[0].sha256, sha256(bytes));
+  assert.equal(result.binaries[0].clamav.status, 'clean');
+  assert.equal(result.binaries[0].clamav.databaseVersion, '12345');
+  assert.equal(result.binaries[0].virusTotalSearchUrl, 'https://www.virustotal.com/gui/search/' + sha256(bytes));
+});
+
+test('ClamAV match becomes a review finding; binary scan errors leave the assessment incomplete', async () => {
+  const packageBytes = createZip([
+    ...packageEntries(),
+    { name: 'bin/tool.exe', content: Buffer.from('test binary payload') },
+  ]);
+  const gallery = {
+    downloadPackage: async () => packageBytes,
+    resolveDependencyGraph: async () => ({ dependencies: [], complete: true }),
+  };
+  const match = await scanGalleryPackage({ name: 'Example', version: '1.0.0' }, gallery, {
+    runPssa: false,
+    scanAdvisories: false,
+    clamavScanner: async () => ({ status: 'match', signature: 'Win.Test.Sample', engineVersion: '1.4.0', databaseVersion: '9' }),
+  });
+  assert.equal(match.assessment, 'complete');
+  assert.equal(match.findings.find((finding) => finding.id === 'PSG-MALWARE-001').confidence, 'medium');
+  assert.ok(match.findings.find((finding) => finding.id === 'PSG-MALWARE-001').references.some((url) => url.includes('/gui/search/')));
+
+  const failed = await scanGalleryPackage({ name: 'Example', version: '1.0.0' }, gallery, {
+    runPssa: false,
+    scanAdvisories: false,
+    clamavScanner: async () => ({ status: 'error', error: 'scanner unavailable' }),
+  });
+  assert.equal(failed.assessment, 'incomplete');
+  assert.equal(failed.coverage.binaryScanning, false);
+  assert.ok(failed.warnings.some((warning) => warning.includes('ClamAV could not scan')));
+});
+
+test('binary entries above extraction limits are skipped and mark archive coverage incomplete', () => {
+  const bytes = createZip([{ name: 'too-large.exe', content: 'x'.repeat(ARCHIVE_LIMITS.entryBytes + 1) }]);
+  const archive = inspectNupkg(bytes);
+  assert.equal(archive.complete, false);
+  assert.equal(archive.binaries.length, 0);
+  assert.ok(archive.warnings.some((warning) => warning.includes('per-file')));
 });
 
 test('malformed ZIP bytes are rejected', () => {

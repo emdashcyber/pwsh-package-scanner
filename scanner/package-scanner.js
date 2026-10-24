@@ -3,11 +3,14 @@ import { parseNuspec } from './xml.js';
 import { runPSScriptAnalyzer } from './analysis.js';
 import { analyzePowerShellBehavior, normalizePSScriptAnalyzerFindings, redactFinding } from './rules.js';
 import { scanAdvisoriesForVersion } from './advisories.js';
+import { scanBinaryEntries } from './binary-scanner.js';
+import { parsePowerShellRequirements } from './requirements.js';
 import { compareVersions } from './versions.js';
 import { nowIso, sha256, safeString, normalizePackageName } from './util.js';
+import { dedupeDependencies } from './xml.js';
 
-export const SCANNER_VERSION = '0.1.0';
-export const RULESET_VERSION = '0.1.0';
+export const SCANNER_VERSION = '0.2.0';
+export const RULESET_VERSION = '0.2.0';
 
 function emptyVersionRecord(item, status = 'incomplete', message = '') {
   return {
@@ -18,7 +21,7 @@ function emptyVersionRecord(item, status = 'incomplete', message = '') {
     scannedAt: null,
     scannerVersion: SCANNER_VERSION,
     rulesetVersion: RULESET_VERSION,
-    tools: { powerShell: null, psscriptAnalyzer: null, psscriptAnalyzerExpected: '1.25.0' },
+    tools: { powerShell: null, psscriptAnalyzer: null, psscriptAnalyzerExpected: '1.25.0', clamav: null },
     packageUrl: 'https://www.powershellgallery.com/packages/' + encodeURIComponent(item.name) + '/' + encodeURIComponent(item.version),
     metadata: {
       title: safeString(item.title || item.name, 300),
@@ -28,9 +31,10 @@ function emptyVersionRecord(item, status = 'incomplete', message = '') {
       updatedAt: item.updatedAt || null,
     },
     dependencies: [],
+    binaryArtifacts: [],
     fileInventory: [],
     findings: [],
-    coverage: { archive: false, powerShellAnalysis: false, dependencyResolution: false, advisories: false },
+    coverage: { archive: false, powerShellAnalysis: false, dependencyResolution: false, advisories: false, binaryScanning: false },
     warnings: message ? [safeString(message, 800)] : [],
   };
 }
@@ -69,7 +73,7 @@ function compareVersionChanges(item, current, previous) {
       severity: 'medium',
       confidence: 'medium',
       title: 'New executable or binary file added',
-      description: 'A file with an executable or library extension was added in this version and was not inspected as PowerShell source.',
+      description: 'A file with an executable or library extension was added in this version. Review the source change and its binary hash/ClamAV result; this change signal does not establish intent.',
       evidence: { file: file.path, line: null, snippet: 'Added file · ' + file.size.toLocaleString('en-US') + ' bytes' },
       references: [item.packageUrl],
     });
@@ -122,12 +126,42 @@ function dedupeFindings(items) {
   });
 }
 
+function dependencyFindings(dependencies, packageUrl) {
+  return (dependencies || []).flatMap((dependency) => {
+    if (dependency.relation === 'contains') return [];
+    if (!['package_not_found', 'no_matching_version'].includes(dependency.status)) return [];
+    const missingPackage = dependency.status === 'package_not_found';
+    return [{
+      id: missingPackage ? 'PSG-DEPENDENCY-001' : 'PSG-DEPENDENCY-002',
+      category: 'supply_chain',
+      severity: missingPackage ? 'medium' : 'low',
+      confidence: 'high',
+      title: missingPackage
+        ? 'Declared dependency package was not found in PowerShell Gallery'
+        : 'Declared dependency version range has no PowerShell Gallery match',
+      description: missingPackage
+        ? 'The dependency lookup completed, but no package with this identity was listed in PowerShell Gallery. It may be supplied by a private repository or another source.'
+        : 'The package exists in PowerShell Gallery, but the declared version range did not match a listed version. The dependency may be supplied elsewhere.',
+      evidence: {
+        file: dependency.file || null,
+        line: dependency.line || null,
+        snippet: safeString(dependency.name + ' ' + (dependency.versionRange || '*') + ' · source: ' + (dependency.declarationSources || []).join(', '), 400),
+      },
+      references: [
+        packageUrl,
+        'https://www.powershellgallery.com/packages/' + encodeURIComponent(dependency.name),
+      ],
+    }];
+  });
+}
+
 export async function scanGalleryPackage(item, gallery, {
   previousVersions = [],
   runPssa = true,
   fetcher = globalThis.fetch,
   curatedAdvisories = [],
   scanAdvisories = true,
+  clamavScanner = null,
   log = () => {},
 } = {}) {
   const base = emptyVersionRecord(item);
@@ -160,7 +194,18 @@ export async function scanGalleryPackage(item, gallery, {
   const behaviorFindings = analyzePowerShellBehavior(scripts);
   const pssa = await runPSScriptAnalyzer(scripts, { enabled: runPssa });
   const pssaFindings = normalizePSScriptAnalyzerFindings(pssa.findings, scripts);
-  const declaredDependencies = nuspec.dependencies.length ? nuspec.dependencies : item.dependencies || [];
+  const requirements = parsePowerShellRequirements(scripts);
+  const galleryDependencies = nuspec.dependencies.length ? nuspec.dependencies : item.dependencies || [];
+  const declaredDependencies = dedupeDependencies([
+    ...galleryDependencies.map((dependency) => ({
+      ...dependency,
+      relation: 'requires',
+      declarationSources: [nuspec.dependencies.length ? 'nuspec' : 'Gallery metadata'],
+    })),
+    ...requirements.requirements,
+    ...requirements.contains,
+  ]);
+  const binaryAnalysis = await scanBinaryEntries(archive.binaries, { scanner: clamavScanner });
   let dependencyAnalysis = { dependencies: [], complete: declaredDependencies.length === 0 };
   let advisoryAnalysis = {
     findings: [],
@@ -186,7 +231,33 @@ export async function scanGalleryPackage(item, gallery, {
         error: String(error.message || error).slice(0, 800),
       };
     }
+  } else {
+    try {
+      dependencyAnalysis = await gallery.resolveDependencyGraph(declaredDependencies);
+    } catch (error) {
+      dependencyAnalysis = { dependencies: [], complete: false };
+      advisoryAnalysis = {
+        ...advisoryAnalysis,
+        error: safeString(error.message || error, 800),
+      };
+    }
   }
+
+  const packageUrl = 'https://www.powershellgallery.com/packages/' + encodeURIComponent(item.name) + '/' + encodeURIComponent(item.version);
+  const binaryFindings = binaryAnalysis.binaries.filter((binary) => binary.clamav.status === 'match').map((binary) => ({
+    id: 'PSG-MALWARE-001',
+    category: 'supply_chain',
+    severity: 'high',
+    confidence: 'medium',
+    title: 'ClamAV signature match in a package binary',
+    description: 'ClamAV reported a signature match for this file. Signature detections can be false positives and require human review; this is not a definitive malware verdict.',
+    evidence: {
+      file: binary.path,
+      line: null,
+      snippet: safeString((binary.clamav.signature || 'Signature match') + ' · SHA-256 ' + binary.sha256, 400),
+    },
+    references: [packageUrl, binary.virusTotalSearchUrl],
+  }));
 
   const result = {
     package: item.name,
@@ -200,8 +271,13 @@ export async function scanGalleryPackage(item, gallery, {
       powerShell: pssa.powerShellVersion || null,
       psscriptAnalyzer: pssa.analyzerVersion || null,
       psscriptAnalyzerExpected: '1.25.0',
+      clamav: binaryAnalysis.binaries.map((binary) => ({
+        engineVersion: binary.clamav.engineVersion,
+        databaseVersion: binary.clamav.databaseVersion,
+        databaseDate: binary.clamav.databaseDate,
+      })).find((tool) => tool.engineVersion) || null,
     },
-    packageUrl: 'https://www.powershellgallery.com/packages/' + encodeURIComponent(item.name) + '/' + encodeURIComponent(item.version),
+    packageUrl,
     metadata: {
       title: safeString(item.title || nuspec.metadata.title || item.name, 300),
       description: safeString(item.description || nuspec.metadata.description || '', 2000),
@@ -213,10 +289,13 @@ export async function scanGalleryPackage(item, gallery, {
       tags: (item.tags || []).slice(0, 30),
     },
     dependencies: dependencyAnalysis.dependencies,
+    binaryArtifacts: binaryAnalysis.binaries,
     fileInventory: archive.inventory,
     findings: dedupeFindings([
       ...behaviorFindings,
       ...pssaFindings,
+      ...binaryFindings,
+      ...dependencyFindings(dependencyAnalysis.dependencies, packageUrl),
       ...advisoryAnalysis.findings,
       ...compareVersionChanges(item, {
         metadata: { owners: item.owners || nuspec.metadata.owners },
@@ -230,14 +309,23 @@ export async function scanGalleryPackage(item, gallery, {
       powerShellAnalysis: pssa.complete,
       dependencyResolution: dependencyAnalysis.complete,
       advisories: advisoryAnalysis.complete,
-      executableBinaries: archive.inventory.some((file) => /\.(?:dll|exe|msi|com|sys|bin|scr|so|dylib)$/i.test(file.path)) ? 'uninspected' : 'none-detected',
+      binaryScanning: binaryAnalysis.complete,
+      executableBinaries: binaryAnalysis.binaries.length
+        ? (binaryAnalysis.complete ? 'hash-and-clamav-complete' : 'incomplete')
+        : 'none-detected',
     },
     advisoryCheckedAt: advisoryAnalysis.checkedAt,
     advisoryError: advisoryAnalysis.error,
-    warnings: [...archive.warnings, ...(pssa.error ? [pssa.error] : []), ...(advisoryAnalysis.error ? [advisoryAnalysis.error] : [])]
+    warnings: [
+      ...archive.warnings,
+      ...(pssa.error ? [pssa.error] : []),
+      ...(advisoryAnalysis.error ? [advisoryAnalysis.error] : []),
+      ...binaryAnalysis.binaries.filter((binary) => binary.clamav.status === 'error')
+        .map((binary) => 'ClamAV could not scan ' + binary.path + ': ' + (binary.clamav.error || 'unknown scanner error')),
+    ]
       .map((message) => safeString(message, 800)).slice(0, 20),
   };
-  if (!archive.complete || !pssa.complete || !dependencyAnalysis.complete || !advisoryAnalysis.complete) result.assessment = 'incomplete';
+  if (!archive.complete || !pssa.complete || !dependencyAnalysis.complete || !advisoryAnalysis.complete || !binaryAnalysis.complete) result.assessment = 'incomplete';
   if (!scripts.length && pssa.complete) result.coverage.powerShellAnalysis = true;
   log({
     package: item.name,

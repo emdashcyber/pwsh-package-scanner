@@ -1,4 +1,4 @@
-import { scanGalleryPackage, SCANNER_VERSION } from './package-scanner.js';
+import { scanGalleryPackage, SCANNER_VERSION, RULESET_VERSION } from './package-scanner.js';
 import { loadCuratedAdvisories, refreshOsvForTargets } from './advisories.js';
 import { addNotScannedVersion, findPackageRecord, findVersionRecord, mergePackageMetadata, mergePackageVersion } from './state.js';
 import { compareVersions } from './versions.js';
@@ -8,6 +8,7 @@ const DEFAULT_BOOTSTRAP_BATCH = 200;
 const DEFAULT_RECONCILE_BATCH = 200;
 const DEFAULT_UPDATE_BATCH = 1000;
 const DEFAULT_ADVISORY_BATCH = 500;
+const DEFAULT_RESULT_REFRESH_BATCH = 200;
 const UPDATE_OVERLAP_MS = 6 * 60 * 60 * 1000;
 
 function packageVersionKey(record, version) {
@@ -23,6 +24,7 @@ function selectedLatest(record) {
 function shouldRescan(item, state) {
   const existing = findVersionRecord(state, item.name, item.version);
   if (!existing || existing.assessment === 'not_scanned') return true;
+  if (existing.assessment === 'incomplete' && !existing.scannedAt) return true;
   const changedAt = Date.parse(item.updatedAt || item.publishedAt || '');
   const scannedMetaAt = Date.parse(existing.metadata?.updatedAt || '');
   return Number.isFinite(changedAt) && Number.isFinite(scannedMetaAt) && changedAt > scannedMetaAt;
@@ -54,6 +56,7 @@ export async function runScanCycle({
   reconcileBatchSize = DEFAULT_RECONCILE_BATCH,
   updateBatchSize = DEFAULT_UPDATE_BATCH,
   advisoryBatchSize = DEFAULT_ADVISORY_BATCH,
+  resultRefreshBatchSize = DEFAULT_RESULT_REFRESH_BATCH,
   concurrency = 4,
   curatedAdvisories,
   log = () => {},
@@ -148,12 +151,51 @@ export async function runScanCycle({
   gallery.clearVersionCache?.();
   if (laterVersions.length) processItems(laterVersions, 'post_launch_versions');
 
-  const candidates = [...work.values()];
+  const refresh = state.manifest.resultRefresh || {
+    id: 'binary-dependency-2026-10', complete: false, afterKey: '', total: 0,
+  };
+  state.manifest.resultRefresh = refresh;
+  const refreshable = [];
+  for (const packageRecord of state.packages.values()) {
+    for (const version of packageRecord.versions || []) {
+      if (version.assessment === 'not_scanned') continue;
+      const key = packageVersionKey(packageRecord, version.version);
+      refreshable.push({ key, packageRecord, version });
+    }
+  }
+  refreshable.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+  if (!Number.isFinite(refresh.total) || refresh.total < refreshable.length) refresh.total = refreshable.length;
+  const refreshBatch = refresh.complete ? [] : refreshable
+    .filter((item) => item.key > (refresh.afterKey || ''))
+    .slice(0, Math.max(1, resultRefreshBatchSize));
+  const refreshKeys = new Set();
+  for (const entry of refreshBatch) {
+    refreshKeys.add(entry.key);
+    if (!work.has(entry.key)) {
+      const { packageRecord, version } = entry;
+      work.set(entry.key, {
+        name: packageRecord.name,
+        version: version.version,
+        title: version.metadata?.title || packageRecord.metadata?.title || packageRecord.name,
+        description: version.metadata?.description || packageRecord.metadata?.description || '',
+        owners: version.metadata?.owners || packageRecord.metadata?.owners || '',
+        authors: version.metadata?.authors || packageRecord.metadata?.authors || '',
+        projectUrl: version.metadata?.projectUrl || packageRecord.metadata?.projectUrl || '',
+        tags: version.metadata?.tags || packageRecord.metadata?.tags || [],
+        publishedAt: version.metadata?.publishedAt || null,
+        updatedAt: version.metadata?.updatedAt || null,
+        dependencies: [],
+      });
+    }
+  }
+
+  const candidates = [...work.entries()].map(([key, item]) => ({ key, item }));
   const processed = await mapLimit(candidates, concurrency, async (item) => {
-    if (!shouldRescan(item, state)) return { item, skipped: true };
-    const existing = findPackageRecord(state, item.name);
+    const { key, item: packageItem } = item;
+    if (!refreshKeys.has(key) && !shouldRescan(packageItem, state)) return { item: packageItem, key, skipped: true };
+    const existing = findPackageRecord(state, packageItem.name);
     try {
-      const result = await scanGalleryPackage(item, gallery, {
+      const result = await scanGalleryPackage(packageItem, gallery, {
         previousVersions: existing?.versions || [],
         runPssa,
         fetcher,
@@ -161,39 +203,52 @@ export async function runScanCycle({
         scanAdvisories: true,
         log,
       });
-      mergePackageVersion(state, item, result, { replace: true });
-      return { item, result, skipped: false };
+      mergePackageVersion(state, packageItem, result, { replace: true });
+      return { item: packageItem, key, result, skipped: false };
     } catch (error) {
       const result = {
-        package: item.name,
-        version: item.version,
+        package: packageItem.name,
+        version: packageItem.version,
         assessment: 'incomplete',
         packageSha256: null,
         scannedAt: null,
         scannerVersion: SCANNER_VERSION,
-        rulesetVersion: '0.1.0',
-        packageUrl: 'https://www.powershellgallery.com/packages/' + encodeURIComponent(item.name) + '/' + encodeURIComponent(item.version),
+        rulesetVersion: RULESET_VERSION,
+        packageUrl: 'https://www.powershellgallery.com/packages/' + encodeURIComponent(packageItem.name) + '/' + encodeURIComponent(packageItem.version),
         metadata: {
-          title: item.title || item.name,
-          description: item.description || '',
-          owners: item.owners || '',
-          publishedAt: item.publishedAt || null,
-          updatedAt: item.updatedAt || null,
+          title: packageItem.title || packageItem.name,
+          description: packageItem.description || '',
+          owners: packageItem.owners || '',
+          publishedAt: packageItem.publishedAt || null,
+          updatedAt: packageItem.updatedAt || null,
         },
         dependencies: [],
+        binaryArtifacts: [],
         fileInventory: [],
         findings: [],
-        coverage: { archive: false, powerShellAnalysis: false, dependencyResolution: false, advisories: false },
+        coverage: { archive: false, powerShellAnalysis: false, dependencyResolution: false, advisories: false, binaryScanning: false },
         warnings: [safeString(error.message || error, 800)],
       };
-      mergePackageVersion(state, item, result, { replace: true });
-      return { item, result, skipped: false };
+      mergePackageVersion(state, packageItem, result, { replace: true });
+      return { item: packageItem, key, result, skipped: false };
     }
   });
   gallery.clearVersionCache?.();
 
   const changed = processed.filter((entry) => !entry.skipped).length;
-  const errors = processed.flatMap((entry) => entry.result?.warnings || []);
+  let refreshAdvanced = 0;
+  if (!refresh.complete && refreshBatch.length) {
+    for (const entry of refreshBatch) {
+      const outcome = processed.find((item) => item.key === entry.key);
+      if (!outcome || outcome.skipped) break;
+      refresh.afterKey = entry.key;
+      refreshAdvanced++;
+    }
+    if (refreshAdvanced === refreshBatch.length
+      && refreshable.filter((item) => item.key > refresh.afterKey).length === 0) refresh.complete = true;
+  } else if (!refresh.complete && !refreshBatch.length) {
+    refresh.complete = true;
+  }
 
   let advisoryRefresh = { processed: 0, complete: !refreshAdvisories, remaining: 0 };
   if (refreshAdvisories) {
@@ -210,13 +265,11 @@ export async function runScanCycle({
   state.manifest.bootstrap = state.manifest.bootstrap || { complete: false, afterId: '', startedAt: attemptedAt };
   state.manifest.reconciliation = state.manifest.reconciliation || { afterId: '' };
   state.manifest.sourceStatus = feedSucceeded ? 'available' : 'degraded';
-  state.manifest.status = feedSucceeded && !sourceErrors.length && !errors.length && (!refreshAdvisories || advisoryRefresh.complete) ? 'ready' : 'degraded';
+  state.manifest.status = feedSucceeded ? 'ready' : 'degraded';
   state.manifest.notice = sourceErrors.length
     ? sourceErrors.join(' ')
-    : errors.length
-      ? 'One or more package checks were incomplete. Review per-version coverage details.'
-      : refreshAdvisories && !advisoryRefresh.complete
-        ? 'The daily advisory refresh is incomplete. Previously published results are retained.'
+    : refreshAdvisories && !advisoryRefresh.complete
+      ? 'The daily advisory refresh is in progress. Previously published findings remain available.'
       : '';
   if (feedSucceeded) state.manifest.lastSuccessfulScan = attemptedAt;
   if (refreshAdvisories && advisoryRefresh.complete) state.manifest.advisoriesUpdatedAt = attemptedAt;
@@ -226,6 +279,9 @@ export async function runScanCycle({
     attemptedAt,
     packageVersionsProcessed: changed,
     packageVersionsSkipped: processed.length - changed,
+    resultRefreshProcessed: refreshAdvanced,
+    resultRefreshComplete: Boolean(refresh.complete),
+    resultRefreshRemaining: Math.max(0, refresh.total - refreshable.filter((item) => item.key <= (refresh.afterKey || '')).length),
     bootstrapComplete: Boolean(state.manifest.bootstrap.complete),
     advisoryRecordsRefreshed: advisoryRefresh.processed,
     advisoryRefreshRemaining: advisoryRefresh.remaining,
@@ -262,8 +318,10 @@ async function refreshStoredAdvisories(state, {
       version.advisoryCheckedAt = result.checkedAt;
       version.advisoryError = null;
       version.coverage = { ...version.coverage, advisories: true };
-      const dependenciesComplete = (version.dependencies || []).every((item) => item.status === 'resolved');
-      if (version.coverage.archive && version.coverage.powerShellAnalysis && dependenciesComplete) version.assessment = 'complete';
+      const dependenciesComplete = (version.coverage.dependencyResolution !== false)
+        && (version.dependencies || []).every((item) => ['resolved', 'package_not_found', 'no_matching_version', 'bundled'].includes(item.status));
+      if (version.coverage.archive && version.coverage.powerShellAnalysis && dependenciesComplete
+        && version.coverage.binaryScanning !== false) version.assessment = 'complete';
     } else {
       version.advisoryError = result.error;
       version.coverage = { ...version.coverage, advisories: false };

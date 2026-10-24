@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "1.0",
-  "status": "degraded",
-  "generatedAt": "2026-10-24T12:26:20.023Z",
+  "schemaVersion": "1.1",
+  "status": "ready",
+  "generatedAt": "2026-10-24T14:27:58.761Z",
   "lastAttemptAt": "2026-10-24T12:05:45.955Z",
   "lastSuccessfulScan": "2026-10-24T12:05:45.955Z",
   "galleryUpdatedThrough": "2026-10-24T06:00:01.06",
@@ -14,13 +14,25 @@
   "reconciliation": {
     "afterId": "Akamai.MOKS"
   },
+  "resultRefresh": {
+    "id": "binary-dependency-2026-10",
+    "complete": false,
+    "afterKey": "",
+    "total": 17834
+  },
+  "freshnessWindowHours": 6,
   "coverage": {
     "listedPackages": 16895,
     "scannedLatestVersions": 16895,
     "scannedVersions": 17834,
     "incompleteVersions": 5428,
     "unscannedLatestVersions": 0,
-    "notScannedVersions": 622966
+    "notScannedVersions": 622966,
+    "binaryFiles": 57501,
+    "binaryFilesChecked": 0,
+    "binaryFilesPending": 57501,
+    "binaryScanErrors": 0,
+    "missingGalleryDependencies": 483
   },
   "shards": [
     "shards/00.json",
@@ -154,7 +166,7 @@
     "state/62.json.gz",
     "state/63.json.gz"
   ],
-  "notice": "One or more package checks were incomplete. Review per-version coverage details.",
+  "notice": "Some package results are incomplete; review per-version coverage details.",
   "sourceStatus": "available",
   "lastBatch": {
     "attemptedAt": "2026-10-24T12:05:45.955Z",

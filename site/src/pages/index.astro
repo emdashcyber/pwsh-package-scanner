@@ -50,6 +50,12 @@ const base = import.meta.env.BASE_URL;
         <span class="search-icon" aria-hidden="true">⌕</span>
         <input id="search" name="q" type="search" placeholder="Search package names" autocomplete="off" />
       </label>
+      <label class="search-field finding-search-field">
+        <span class="visually-hidden">Filter by finding ID</span>
+        <span class="search-icon" aria-hidden="true">#</span>
+        <input id="finding-filter" name="finding" type="search" list="finding-ids" placeholder="Finding ID, e.g. PSG-SECRET-001" autocomplete="off" />
+        <datalist id="finding-ids"></datalist>
+      </label>
       <label class="select-field">
         <span class="visually-hidden">Filter by severity</span>
         <select id="severity-filter" name="severity">
@@ -69,6 +75,14 @@ const base = import.meta.env.BASE_URL;
           <option value="complete">Complete</option>
           <option value="incomplete">Incomplete</option>
           <option value="not_scanned">Not scanned</option>
+        </select>
+      </label>
+      <label class="select-field">
+        <span class="visually-hidden">Sort package results</span>
+        <select id="sort-order" name="sort">
+          <option value="recent">Most recently scanned</option>
+          <option value="name">A–Z</option>
+          <option value="findings">Most findings</option>
         </select>
       </label>
     </form>

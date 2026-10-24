@@ -80,7 +80,7 @@ export function inspectNupkg(buffer, limits = ARCHIVE_LIMITS) {
   if (end + 22 + commentLength > buffer.length || centralOffset + centralSize > end) throw new Error('ZIP central directory is outside the archive bounds.');
   if (entryCount > limits.entryCount) throw new Error('Package archive contains more entries than the configured limit.');
 
-  const result = { files: [], inventory: [], warnings: [], complete: true, entryCount };
+  const result = { files: [], binaries: [], inventory: [], warnings: [], complete: true, entryCount };
   let totalUncompressed = 0;
   let offset = centralOffset;
   const names = new Set();
@@ -133,7 +133,8 @@ export function inspectNupkg(buffer, limits = ARCHIVE_LIMITS) {
     }
 
     const isNuspec = normalized.toLocaleLowerCase('en-US').endsWith('.nuspec');
-    const eligible = !directory && validPath && !duplicate && (isScript(normalized) || isNuspec);
+    const binary = !directory && validPath && !duplicate && isBinary(normalized);
+    const eligible = !directory && validPath && !duplicate && (isScript(normalized) || isNuspec || binary);
     if (eligible) {
       if (uncompressedSize > limits.entryBytes) {
         result.complete = false;
@@ -170,7 +171,7 @@ export function inspectNupkg(buffer, limits = ARCHIVE_LIMITS) {
       try {
         body = method === 0
           ? Buffer.from(compressed)
-          : inflateRawSync(compressed, { maxOutputLength: limits.entryBytes + 1 });
+          : inflateRawSync(compressed, { maxOutputLength: Math.min(limits.totalBytes, limits.entryBytes) + 1 });
       } catch {
         result.complete = false;
         result.warnings.push('A package file could not be safely decompressed.');
@@ -183,14 +184,17 @@ export function inspectNupkg(buffer, limits = ARCHIVE_LIMITS) {
         offset = endEntry;
         continue;
       }
-      result.files.push({
-        path: normalized,
-        size: uncompressedSize,
-        kind: isNuspec ? 'nuspec' : 'script',
-        text: decodeText(body),
-      });
+      if (binary) {
+        result.binaries.push({ path: normalized, size: uncompressedSize, content: body });
+      } else {
+        result.files.push({
+          path: normalized,
+          size: uncompressedSize,
+          kind: isNuspec ? 'nuspec' : 'script',
+          text: decodeText(body),
+        });
+      }
     }
-    if (!directory && validPath && isBinary(normalized)) result.complete = false;
     offset = endEntry;
   }
   if (offset > centralOffset + centralSize) throw new Error('ZIP central directory entry count or size is inconsistent.');

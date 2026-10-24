@@ -95,10 +95,15 @@ export class GalleryClient {
             continue;
           }
         }
-        if (!response.ok) throw new Error('Gallery returned HTTP ' + response.status + '.');
+        if (!response.ok) {
+          const error = new Error('Gallery returned HTTP ' + response.status + '.');
+          error.status = response.status;
+          throw error;
+        }
         return await readLimitedBody(response, maxBytes);
       } catch (error) {
         lastError = error;
+        if (error?.status >= 400 && error?.status < 500 && error.status !== 429) break;
         if (attempt >= this.retryCount) break;
         await this.wait(500 * (2 ** attempt));
       }

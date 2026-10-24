@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+    paths-ignore:
+      - 'site/public/api/v1/**'
   workflow_dispatch:
 
 permissions:

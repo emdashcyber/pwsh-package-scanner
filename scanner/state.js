@@ -12,7 +12,7 @@ const MAX_STATE_SHARD_COMPRESSED_BYTES = 25 * 1024 * 1024;
 const MAX_STATE_SHARD_BYTES = 100 * 1024 * 1024;
 const packageVersionIndexes = new WeakMap();
 const DEFAULT_MANIFEST = {
-  schemaVersion: '1.0',
+  schemaVersion: '1.1',
   status: 'bootstrap_required',
   generatedAt: null,
   lastAttemptAt: null,
@@ -21,6 +21,8 @@ const DEFAULT_MANIFEST = {
   advisoriesUpdatedAt: null,
   bootstrap: { complete: false, afterId: '', startedAt: null },
   reconciliation: { afterId: '' },
+  resultRefresh: { id: 'binary-dependency-2026-10', complete: false, afterKey: '' },
+  freshnessWindowHours: 6,
   coverage: {
     listedPackages: 0,
     scannedLatestVersions: 0,
@@ -47,7 +49,7 @@ export function resultPath(name, version) {
 }
 
 function compactVersionRecord(version) {
-  if (version.assessment !== 'not_scanned') return version;
+  if (version.assessment !== 'not_scanned') return { ...version, schemaVersion: '1.1' };
   return {
     version: version.version,
     assessment: 'not_scanned',
@@ -196,6 +198,11 @@ export function buildCoverage(state) {
   let incompleteVersions = 0;
   let unscannedLatestVersions = 0;
   let notScannedVersions = 0;
+  let binaryFiles = 0;
+  let binaryFilesChecked = 0;
+  let binaryFilesPending = 0;
+  let binaryScanErrors = 0;
+  let missingGalleryDependencies = 0;
   for (const record of packages) {
     const latest = latestVersionRecord(record);
     if (!latest || latest.assessment === 'not_scanned') unscannedLatestVersions++;
@@ -204,6 +211,20 @@ export function buildCoverage(state) {
       if (version.assessment && version.assessment !== 'not_scanned') scannedVersions++;
       if (version.assessment === 'incomplete') incompleteVersions++;
       if (version.assessment === 'not_scanned') notScannedVersions++;
+      const artifacts = version.binaryArtifacts || [];
+      const inventoryBinaries = (version.fileInventory || []).filter((file) =>
+        /\.(?:dll|exe|msi|com|sys|bin|scr|so|dylib)$/i.test(file.path || ''));
+      binaryFiles += artifacts.length || inventoryBinaries.length;
+      if (artifacts.length) {
+        for (const binary of artifacts) {
+          if (binary.sha256 && ['clean', 'match'].includes(binary.clamav?.status)) binaryFilesChecked++;
+          if (binary.clamav?.status === 'error') binaryScanErrors++;
+        }
+      } else if (inventoryBinaries.length) {
+        binaryFilesPending += inventoryBinaries.length;
+      }
+      missingGalleryDependencies += (version.dependencies || []).filter((dependency) =>
+        ['package_not_found', 'no_matching_version'].includes(dependency.status)).length;
     }
   }
   return {
@@ -213,12 +234,22 @@ export function buildCoverage(state) {
     incompleteVersions,
     unscannedLatestVersions,
     notScannedVersions,
+    binaryFiles,
+    binaryFilesChecked,
+    binaryFilesPending,
+    binaryScanErrors,
+    missingGalleryDependencies,
   };
 }
 
 function catalogItem(record) {
   const latest = latestVersionRecord(record);
+  const mostRecentlyScanned = record.versions.reduce((current, version) => {
+    if (!version.scannedAt) return current;
+    return !current || Date.parse(version.scannedAt) > Date.parse(current.scannedAt) ? version : current;
+  }, null);
   const allVersions = [...record.versions].sort((a, b) => b.version.localeCompare(a.version, 'en', { numeric: true, sensitivity: 'base' }));
+  const allFindings = record.versions.flatMap((version) => version.findings || []);
   return {
     name: record.name,
     title: record.metadata?.title || record.name,
@@ -232,7 +263,8 @@ function catalogItem(record) {
     latestAssessment: latest?.assessment || 'not_scanned',
     latestFindingCount: latest?.findings?.length || 0,
     highestSeverity: topSeverity(latest?.findings),
-    latestScannedAt: latest?.scannedAt || null,
+    latestScannedAt: mostRecentlyScanned?.scannedAt || null,
+    totalFindingCount: allFindings.length,
     latestResultPath: latest && latest.assessment !== 'not_scanned' ? resultPath(record.name, latest.version) : null,
     versionCount: allVersions.length,
     versions: allVersions.map((version) => {
@@ -248,6 +280,7 @@ function catalogItem(record) {
         summary.publishedAt = version.metadata?.publishedAt || null;
         summary.updatedAt = version.metadata?.updatedAt || null;
         summary.findingCount = (version.findings || []).length;
+        summary.findingIds = [...new Set((version.findings || []).map((finding) => finding.id).filter(Boolean))].sort();
         summary.highestSeverity = topSeverity(version.findings);
         summary.resultPath = resultPath(record.name, version.version);
       }
@@ -327,10 +360,10 @@ export async function loadScanState(apiBaseUrl, {
   publicDirectory = SITE_PUBLIC_DIRECTORY,
   fetcher = globalThis.fetch,
 } = {}) {
-  const published = await loadPublishedState(apiBaseUrl, fetcher);
-  if (published.packages.size) return { state: published, source: 'published' };
   const local = await loadLocalState(publicDirectory);
-  return local.packages.size ? { state: local, source: 'local' } : { state: published, source: 'published' };
+  if (local.packages.size) return { state: local, source: 'local' };
+  const published = await loadPublishedState(apiBaseUrl, fetcher);
+  return { state: published, source: 'published' };
 }
 
 export async function writeSnapshot(state, publicDirectory = SITE_PUBLIC_DIRECTORY) {
@@ -367,12 +400,12 @@ export async function writeSnapshot(state, publicDirectory = SITE_PUBLIC_DIRECTO
     shardPaths.push(catalogPath);
     stateShardPaths.push(statePath);
     await writeFile(resolve(temporaryRoot, catalogPath), JSON.stringify({
-      schemaVersion: '1.0',
+      schemaVersion: '1.1',
       shard: key,
       packages: catalog,
     }));
     await writeFile(resolve(temporaryRoot, statePath), gzipSync(JSON.stringify({
-      schemaVersion: '1.0',
+      schemaVersion: '1.1',
       shard: key,
       packages: compactRecords,
     })));
@@ -388,7 +421,7 @@ export async function writeSnapshot(state, publicDirectory = SITE_PUBLIC_DIRECTO
 
   const manifest = {
     ...state.manifest,
-    schemaVersion: '1.0',
+    schemaVersion: '1.1',
     generatedAt: nowIso(),
     coverage: buildCoverage(state),
     shards: shardPaths.sort(),

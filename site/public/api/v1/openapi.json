@@ -56,19 +56,21 @@
         "type": "object",
         "required": ["schemaVersion", "status", "coverage", "shards", "stateShards"],
         "properties": {
-          "schemaVersion": { "type": "string", "const": "1.0" },
+          "schemaVersion": { "type": "string", "const": "1.1" },
           "status": { "type": "string", "enum": ["ready", "degraded", "bootstrap_required"] },
           "sourceStatus": { "type": "string", "enum": ["available", "degraded"] },
           "generatedAt": { "type": ["string", "null"], "format": "date-time" },
           "lastAttemptAt": { "type": ["string", "null"], "format": "date-time" },
           "lastSuccessfulScan": { "type": ["string", "null"], "format": "date-time" },
+          "freshnessWindowHours": { "type": "integer", "minimum": 1, "description": "The catalog is stale only after this many hours without a successful scan." },
           "galleryUpdatedThrough": { "type": ["string", "null"], "format": "date-time" },
           "advisoriesUpdatedAt": { "type": ["string", "null"], "format": "date-time" },
           "bootstrap": { "type": "object", "properties": { "complete": { "type": "boolean" }, "afterId": { "type": "string" }, "startedAt": { "type": ["string", "null"], "format": "date-time" } } },
           "reconciliation": { "type": "object", "properties": { "afterId": { "type": "string" } } },
+          "resultRefresh": { "type": "object", "properties": { "id": { "type": "string" }, "complete": { "type": "boolean" }, "afterKey": { "type": "string" }, "total": { "type": "integer", "minimum": 0 } } },
           "coverage": { "$ref": "#/components/schemas/Coverage" },
           "shards": { "type": "array", "items": { "type": "string", "pattern": "^shards/[0-9a-f]{2}\\.json$" } },
-          "stateShards": { "type": "array", "items": { "type": "string", "pattern": "^state/[0-9a-f]{2}\\.json$" } },
+          "stateShards": { "type": "array", "items": { "type": "string", "pattern": "^state/[0-9a-f]{2}\\.json\\.gz$" } },
           "notice": { "type": "string" }
         }
       },
@@ -81,21 +83,26 @@
           "scannedVersions": { "type": "integer", "minimum": 0 },
           "incompleteVersions": { "type": "integer", "minimum": 0 },
           "unscannedLatestVersions": { "type": "integer", "minimum": 0 },
-          "notScannedVersions": { "type": "integer", "minimum": 0 }
+          "notScannedVersions": { "type": "integer", "minimum": 0 },
+          "binaryFiles": { "type": "integer", "minimum": 0 },
+          "binaryFilesChecked": { "type": "integer", "minimum": 0 },
+          "binaryFilesPending": { "type": "integer", "minimum": 0 },
+          "binaryScanErrors": { "type": "integer", "minimum": 0 },
+          "missingGalleryDependencies": { "type": "integer", "minimum": 0 }
         }
       },
       "CatalogShard": {
         "type": "object",
         "required": ["schemaVersion", "shard", "packages"],
         "properties": {
-          "schemaVersion": { "type": "string", "const": "1.0" },
+          "schemaVersion": { "type": "string", "const": "1.1" },
           "shard": { "type": "string", "pattern": "^[0-9a-f]{2}$" },
           "packages": { "type": "array", "items": { "$ref": "#/components/schemas/CatalogPackage" } }
         }
       },
       "CatalogPackage": {
         "type": "object",
-        "required": ["name", "latestVersion", "latestAssessment", "latestFindingCount", "versions"],
+        "required": ["name", "latestVersion", "latestAssessment", "latestFindingCount", "totalFindingCount", "versions"],
         "properties": {
           "name": { "type": "string" },
           "title": { "type": "string" },
@@ -108,6 +115,7 @@
           "latestFindingCount": { "type": "integer", "minimum": 0 },
           "highestSeverity": { "type": ["string", "null"], "enum": ["critical", "high", "medium", "low", "info", null] },
           "latestScannedAt": { "type": ["string", "null"], "format": "date-time" },
+          "totalFindingCount": { "type": "integer", "minimum": 0, "description": "Findings across all scanned versions in this package." },
           "latestResultPath": { "type": ["string", "null"] },
           "versionCount": { "type": "integer", "minimum": 0 },
           "versionInventoryComplete": { "type": "boolean" },
@@ -125,6 +133,7 @@
           "publishedAt": { "type": ["string", "null"], "description": "Gallery-provided publication timestamp; preserved as supplied by the feed." },
           "updatedAt": { "type": ["string", "null"], "description": "Gallery-provided update timestamp; preserved as supplied by the feed." },
           "findingCount": { "type": "integer", "minimum": 0 },
+          "findingIds": { "type": "array", "uniqueItems": true, "items": { "type": "string" }, "description": "Finding IDs in this version result; supports catalog-wide rule filtering." },
           "highestSeverity": { "type": ["string", "null"], "enum": ["critical", "high", "medium", "low", "info", null] },
           "resultPath": { "type": "string", "description": "Omitted when assessment is not_scanned; no per-version result document is emitted for pre-launch versions." }
         }
@@ -133,9 +142,9 @@
       "PackageVersion": {
         "type": "object",
         "description": "Per-version result documents are published for scanned versions. Known pre-launch versions remain listed with not_scanned assessments in the catalog and do not have separate result documents.",
-        "required": ["schemaVersion", "package", "version", "assessment", "findings", "dependencies", "coverage"],
+        "required": ["schemaVersion", "package", "version", "assessment", "findings", "dependencies", "binaryArtifacts", "coverage"],
         "properties": {
-          "schemaVersion": { "type": "string", "const": "1.0" },
+          "schemaVersion": { "type": "string", "const": "1.1" },
           "package": { "type": "string" },
           "version": { "type": "string" },
           "assessment": { "$ref": "#/components/schemas/Assessment" },
@@ -143,26 +152,42 @@
           "scannedAt": { "type": ["string", "null"], "format": "date-time" },
           "scannerVersion": { "type": ["string", "null"] },
           "rulesetVersion": { "type": ["string", "null"] },
-          "tools": { "type": "object", "properties": { "powerShell": { "type": ["string", "null"] }, "psscriptAnalyzer": { "type": ["string", "null"] }, "psscriptAnalyzerExpected": { "type": "string" } } },
+          "tools": { "type": "object", "properties": { "powerShell": { "type": ["string", "null"] }, "psscriptAnalyzer": { "type": ["string", "null"] }, "psscriptAnalyzerExpected": { "type": "string" }, "clamav": { "type": ["object", "null"], "properties": { "engineVersion": { "type": ["string", "null"] }, "databaseVersion": { "type": ["string", "null"] }, "databaseDate": { "type": ["string", "null"] } } } } },
           "metadata": { "type": "object" },
           "dependencies": { "type": "array", "items": { "$ref": "#/components/schemas/Dependency" } },
+          "binaryArtifacts": { "type": "array", "items": { "$ref": "#/components/schemas/BinaryArtifact" } },
           "fileInventory": { "type": "array", "items": { "type": "object", "required": ["path", "size", "extension"] } },
-          "coverage": { "type": "object" },
+          "coverage": { "type": "object", "properties": { "archive": { "type": "boolean" }, "powerShellAnalysis": { "type": "boolean" }, "dependencyResolution": { "type": "boolean" }, "advisories": { "type": "boolean" }, "binaryScanning": { "type": "boolean" }, "executableBinaries": { "type": "string", "enum": ["none-detected", "hash-and-clamav-complete", "incomplete"] } } },
           "warnings": { "type": "array", "items": { "type": "string" } },
           "findings": { "type": "array", "items": { "$ref": "#/components/schemas/Finding" } }
         }
       },
       "Dependency": {
         "type": "object",
-        "required": ["name", "versionRange", "status"],
+        "required": ["name", "versionRange", "relation", "status"],
         "properties": {
           "name": { "type": "string" },
           "versionRange": { "type": "string" },
           "parent": { "type": ["string", "null"] },
           "depth": { "type": "integer", "minimum": 1 },
-          "status": { "type": "string", "enum": ["resolved", "unresolved", "unsupported_range", "gallery_unavailable", "no_matching_version", "depth_limit", "node_limit"] },
+          "relation": { "type": "string", "enum": ["requires", "contains"] },
+          "declarationSources": { "type": "array", "items": { "type": "string" } },
+          "file": { "type": ["string", "null"] },
+          "line": { "type": ["integer", "null"], "minimum": 1 },
+          "status": { "type": "string", "enum": ["resolved", "bundled", "package_not_found", "unresolved", "unsupported_range", "gallery_unavailable", "no_matching_version", "depth_limit", "node_limit"] },
           "resolvedVersion": { "type": ["string", "null"] },
           "sourceEcosystem": { "type": "string" }
+        }
+      },
+      "BinaryArtifact": {
+        "type": "object",
+        "required": ["path", "size", "sha256", "virusTotalSearchUrl", "clamav"],
+        "properties": {
+          "path": { "type": "string" },
+          "size": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "virusTotalSearchUrl": { "type": "string", "format": "uri" },
+          "clamav": { "type": "object", "required": ["status"], "properties": { "status": { "type": "string", "enum": ["clean", "match", "error"] }, "signature": { "type": ["string", "null"] }, "engineVersion": { "type": ["string", "null"] }, "databaseVersion": { "type": ["string", "null"] }, "databaseDate": { "type": ["string", "null"] }, "error": { "type": "string" } } }
         }
       },
       "Finding": {

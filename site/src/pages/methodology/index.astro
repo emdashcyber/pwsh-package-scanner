@@ -21,11 +21,12 @@ import Base from '../../layouts/Base.astro';
       <h2>Finding sources</h2>
       <ul>
         <li>PowerShell static analysis and project-maintained rules for risky code patterns, credential exposure, obfuscation, and suspicious combinations of behavior.</li>
-        <li>Dependency metadata from package manifests and archive metadata, resolved where version constraints and Gallery records permit.</li>
+        <li>Required dependencies from Gallery metadata, `.psd1` `RequiredModules`, and script `#Requires -Modules` declarations. `.psd1` `ModuleList` entries are shown separately as contains relationships.</li>
         <li>Known vulnerability advisories where package identity and affected version ranges can be matched reliably, plus curated Gallery-specific advisory records.</li>
+        <li>SHA-256 hashes and ClamAV scans of supported binary files. Each hash links to a VirusTotal search; the scanner never uploads package files.</li>
         <li>Version-to-version changes in package owner metadata, dependency declarations, and file inventory.</li>
       </ul>
-      <p>Unsupported dependency identities and unresolved version ranges are reported as coverage gaps. An absent advisory match does not mean that a package or dependency is vulnerability-free.</p>
+      <p>A dependency lookup that completes without finding a package or matching version in PowerShell Gallery is reported as a Gallery-specific finding. The dependency could still be supplied by a private repository or another source. Unsupported ranges and temporary lookup failures remain coverage gaps. An absent advisory match does not mean that a package or dependency is vulnerability-free.</p>
     </section>
 
     <section>
@@ -33,15 +34,20 @@ import Base from '../../layouts/Base.astro';
       <p>Every finding has a category, severity, confidence, rule or advisory identifier, and evidence. Evidence excerpts are short and redact likely secret values. Low-confidence behavior patterns are leads for review, not accusations.</p>
       <ul>
         <li><strong>Complete:</strong> the configured static checks finished for the package version.</li>
-        <li><strong>Incomplete:</strong> a required download, parse, dependency, or file-type check could not be completed.</li>
+        <li><strong>Incomplete:</strong> a required download, parse, dependency, PowerShell, or binary check could not be completed.</li>
         <li><strong>Not scanned:</strong> no result has been produced for that version.</li>
       </ul>
       <p>“No findings detected” means the enabled checks did not report a finding for that version. It does not mean the version is safe.</p>
     </section>
 
     <section>
+      <h2>Dependency graph</h2>
+      <p>Each version result shows requirement and contains edges with their declaration source, version range, Gallery lookup result, and source file location when available. A ModuleList edge represents the manifest's module inventory; Gallery dependency metadata may separately list those modules as install dependencies.</p>
+    </section>
+
+    <section>
       <h2>Refresh and availability</h2>
-      <p>Gallery discovery runs hourly on a best-effort schedule. GitHub Actions schedules may be delayed, so each API snapshot reports its last attempt and last successful scan. A snapshot older than two hours is marked stale.</p>
+      <p>Gallery discovery runs hourly on a best-effort schedule. GitHub Actions schedules may be delayed, so each API snapshot reports its last attempt and last successful scan. A snapshot older than six hours is marked stale. Package-level incomplete results are shown separately from Gallery service health. Previously scanned versions are refreshed in resumable batches, and the page reports that progress.</p>
     </section>
 
     <section class="article-contact">

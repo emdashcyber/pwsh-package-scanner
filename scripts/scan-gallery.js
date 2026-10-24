@@ -25,6 +25,9 @@ async function writeStepSummary(manifest) {
     '- Latest versions scanned: ' + coverage.scannedLatestVersions,
     '- Versions observed: ' + coverage.scannedVersions,
     '- Incomplete versions: ' + coverage.incompleteVersions,
+    '- Binary files checked with a SHA-256 hash and ClamAV: ' + (coverage.binaryFilesChecked || 0) + '/' + (coverage.binaryFiles || 0),
+    '- Dependencies not found in PowerShell Gallery: ' + (coverage.missingGalleryDependencies || 0),
+    '- Existing-result refresh: ' + (manifest.resultRefresh?.complete ? 'complete' : (manifest.resultRefresh?.total || 0) - (manifest.lastBatch?.resultRefreshRemaining || 0) + '/' + (manifest.resultRefresh?.total || 0)),
     '- Bootstrap complete: ' + Boolean(manifest.bootstrap?.complete),
     '- Advisory refresh cursor: ' + (manifest.advisoryRefreshCursor || 'complete'),
     '',
@@ -60,6 +63,7 @@ async function main() {
       reconcileBatchSize: Number(process.env.RECONCILE_BATCH_SIZE) || 200,
       updateBatchSize: Number(process.env.UPDATE_BATCH_SIZE) || 1000,
       advisoryBatchSize: Number(process.env.ADVISORY_BATCH_SIZE) || 500,
+      resultRefreshBatchSize: Number(process.env.RESULT_REFRESH_BATCH_SIZE) || 200,
       concurrency: Number(process.env.SCAN_CONCURRENCY) || 4,
       log,
     });
@@ -81,6 +85,10 @@ async function main() {
       scannedLatestVersions: manifest.coverage.scannedLatestVersions,
       scannedVersions: manifest.coverage.scannedVersions,
       incompleteVersions: manifest.coverage.incompleteVersions,
+      binaryFilesChecked: manifest.coverage.binaryFilesChecked || 0,
+      binaryFiles: manifest.coverage.binaryFiles || 0,
+      missingGalleryDependencies: manifest.coverage.missingGalleryDependencies || 0,
+      resultRefresh: manifest.resultRefresh,
       stateShards: manifest.stateShards.length,
       bootstrapComplete: manifest.bootstrap.complete,
     });

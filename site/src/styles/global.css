@@ -196,7 +196,7 @@ h1, h2, h3 { line-height: 1.2; letter-spacing: -0.01em; }
 .catalog { max-width: 1080px; margin: 0 auto; scroll-margin-top: 6rem; }
 .section-heading { margin-bottom: 1.1rem; }
 .text-link { font-weight: 620; text-decoration: none; white-space: nowrap; }
-.filters { display: grid; grid-template-columns: minmax(15rem, 1.4fr) repeat(2, minmax(10rem, 0.65fr)); gap: 0.6rem; }
+.filters { display: grid; grid-template-columns: minmax(14rem, 1.25fr) minmax(15rem, 1.3fr) repeat(3, minmax(9rem, 0.7fr)); gap: 0.6rem; }
 .search-field, .select-field {
   display: flex;
   align-items: center;
@@ -238,6 +238,7 @@ h1, h2, h3 { line-height: 1.2; letter-spacing: -0.01em; }
 .package-name a:hover { color: var(--accent); text-decoration: underline; }
 .package-version { color: var(--muted); font: 0.78rem/1.4 var(--font-mono); }
 .package-description { grid-column: 1; margin: 0; color: var(--muted); font-size: 0.84rem; line-height: 1.45; }
+.package-scan-date, .package-matching-versions { grid-column: 1; margin: 0; color: var(--muted); font-size: 0.76rem; line-height: 1.4; }
 .package-meta { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 0.4rem; }
 .assessment-badge, .finding-badge {
   display: inline-flex;
@@ -275,6 +276,23 @@ h1, h2, h3 { line-height: 1.2; letter-spacing: -0.01em; }
 .package-source { display: inline-block; margin-top: 0.8rem; font-size: 0.8rem; }
 .version-picker { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.45rem; margin: 0.6rem 0 0 1rem; color: var(--muted); font-size: 0.8rem; }
 .version-picker select { min-height: 2rem; border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.5rem; background: var(--surface); color: var(--text); }
+.dependency-graph, .binary-artifacts { margin-top: 1rem; padding: 0.85rem; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); }
+.dependency-graph h4, .binary-artifacts h4 { margin: 0; font-size: 0.95rem; }
+.graph-root { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.7rem; padding: 0.55rem 0.7rem; border: 1px solid var(--accent); border-radius: 7px; background: var(--surface); overflow-wrap: anywhere; }
+.graph-root strong, .graph-connector { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; }
+.graph-edge-list, .binary-artifact-list { display: grid; gap: 0.5rem; margin: 0.65rem 0 0; padding: 0; list-style: none; }
+.graph-edge { position: relative; margin-left: 1.25rem; padding: 0.65rem; border-left: 2px solid var(--border); border-radius: 0 7px 7px 0; background: var(--surface); }
+.graph-edge-path { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.55rem; overflow-wrap: anywhere; }
+.graph-parent { color: var(--muted); font: 0.74rem/1.45 var(--font-mono); }
+.graph-edge-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.4rem; color: var(--muted); font-size: 0.73rem; }
+.graph-edge-meta code { font-size: 0.72rem; }
+.graph-status { display: inline-flex; padding: 0.12rem 0.45rem; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font: 650 0.65rem/1.4 var(--font-mono); text-transform: uppercase; }
+.graph-status-resolved { border-color: color-mix(in srgb, var(--success) 35%, var(--border)); color: var(--success); }
+.graph-status-bundled { border-color: color-mix(in srgb, var(--info) 35%, var(--border)); color: var(--info); }
+.graph-status-package_not_found, .graph-status-no_matching_version { border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); color: var(--danger); }
+.binary-artifact-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.4rem 0.7rem; padding: 0.65rem; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); overflow-wrap: anywhere; }
+.binary-artifact-list code { grid-column: 1 / -1; font-size: 0.72rem; overflow-wrap: anywhere; }
+.binary-artifact-list a, .binary-artifact-list small { grid-column: 1 / -1; font-size: 0.75rem; }
 .empty-state { padding: 2.5rem 1rem; border: 1px dashed var(--border); border-radius: var(--radius); background: color-mix(in srgb, var(--surface) 70%, transparent); text-align: center; }
 .empty-state h3 { margin: 0.4rem 0; font-size: 1.1rem; }
 .empty-state p { max-width: 34rem; margin: 0 auto; color: var(--muted); font-size: 0.9rem; }
