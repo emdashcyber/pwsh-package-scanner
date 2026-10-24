@@ -10,7 +10,7 @@
     "scan": "node scripts/scan-gallery.js",
     "scan:bootstrap": "node scripts/scan-gallery.js --bootstrap",
     "scan:bootstrap:local": "node scripts/scan-gallery.js --bootstrap-local",
-    "test": "node --test tests",
+    "test": "node --test \"tests/**/*.test.js\"",
     "check": "npm test && npm --prefix site run check"
   }
 }
