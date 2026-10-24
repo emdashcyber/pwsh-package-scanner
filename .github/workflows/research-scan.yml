@@ -35,14 +35,14 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: site/package-lock.json
-      - name: Install PowerShell 7.5.12
+      - name: Install PowerShell 7.6.8
         shell: bash
         run: |
           set -euo pipefail
-          archive="$RUNNER_TEMP/powershell-7.5.12-linux-x64.tar.gz"
-          install_dir="$RUNNER_TEMP/pwsh-7.5.12"
-          curl --fail --location --silent --show-error "https://github.com/PowerShell/PowerShell/releases/download/v7.5.12/powershell-7.5.12-linux-x64.tar.gz" --output "$archive"
-          printf '%s  %s\n' 'DB85AE1F45005FFD20E456890585167257151FA99406CCD7AB344F7CF3A766FD' "$archive" | sha256sum --check -
+          archive="$RUNNER_TEMP/powershell-7.6.8-linux-x64.tar.gz"
+          install_dir="$RUNNER_TEMP/pwsh-7.6.8"
+          curl --fail --location --silent --show-error "https://github.com/PowerShell/PowerShell/releases/download/v7.6.8/powershell-7.6.8-linux-x64.tar.gz" --output "$archive"
+          printf '%s  %s\n' '59112E38AD83350E4F6DC0195953C66B5926792F300CA2E7691B8242E7A16E7F' "$archive" | sha256sum --check -
           mkdir -p "$install_dir"
           tar -xzf "$archive" -C "$install_dir"
           chmod +x "$install_dir/pwsh"
@@ -52,11 +52,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           $modulePath = Join-Path $env:RUNNER_TEMP 'ps-modules'
           New-Item -ItemType Directory -Force -Path $modulePath | Out-Null
-          Save-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Path $modulePath -Force
+          Save-PSResource -Name PSScriptAnalyzer -Version 1.25.0 -Repository PSGallery -Path $modulePath -TrustRepository
           "PSSCRIPTANALYZER_MODULE_PATH=$modulePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "PowerShell: $($PSVersionTable.PSVersion) · PSScriptAnalyzer: $((Get-Module -ListAvailable PSScriptAnalyzer | Where-Object Version -eq '1.25.0' | Select-Object -First 1).Version)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
       - run: npm ci --prefix site --ignore-scripts --no-audit --no-fund

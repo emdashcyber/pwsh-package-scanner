@@ -39,7 +39,7 @@ The dashboard supports search and assessment/severity filters, and fetches versi
 
 ## Local use
 
-Requirements: Node.js 24, PowerShell 7.5.12, and PSScriptAnalyzer 1.25.0 for complete PowerShell analysis.
+Requirements: Node.js 24, PowerShell 7.6.8, and PSScriptAnalyzer 1.25.0 for complete PowerShell analysis.
 
 Install site dependencies and run the dashboard:
 
@@ -70,7 +70,7 @@ From the repository root, `npm test` runs scanner fixtures, `npm --prefix site t
 
 ## GitHub Actions and deployment
 
-`.github/workflows/research-scan.yml` runs on pushes to `main`, hourly at minute 17 UTC, and daily at 23:43 UTC. The daily run refreshes OSV matches; maintainers can request that refresh during a manual run. The workflow installs pinned PowerShell 7.5.12 and PSScriptAnalyzer 1.25.0, scans without application secrets, builds the site from `site/`, and deploys `site/dist` with GitHub Pages. `.github/workflows/validate.yml` runs the offline checks for pull requests.
+`.github/workflows/research-scan.yml` runs on pushes to `main`, hourly at minute 17 UTC, and daily at 23:43 UTC. The daily run refreshes OSV matches; maintainers can request that refresh during a manual run. The workflow installs pinned PowerShell 7.6.8 and PSScriptAnalyzer 1.25.0, scans without application secrets, builds the site from `site/`, and deploys `site/dist` with GitHub Pages. `.github/workflows/validate.yml` runs the offline checks for pull requests.
 
 GitHub Actions schedules are best-effort. The dashboard marks the service stale after two hours without a successful Gallery poll and displays the last attempt, last successful scan, and current coverage. A failed workflow leaves the previously deployed Pages site available.
 
