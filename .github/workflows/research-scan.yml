@@ -1,0 +1,83 @@
+name: Gallery research scan
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 * * * *'
+    - cron: '43 23 * * *'
+  workflow_dispatch:
+    inputs:
+      refresh_advisories:
+        description: Refresh OSV advisories during this run
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gallery-research-scan
+  cancel-in-progress: false
+
+jobs:
+  scan-and-build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Install PowerShell 7.5.12
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/powershell-7.5.12-linux-x64.tar.gz"
+          install_dir="$RUNNER_TEMP/pwsh-7.5.12"
+          curl --fail --location --silent --show-error "https://github.com/PowerShell/PowerShell/releases/download/v7.5.12/powershell-7.5.12-linux-x64.tar.gz" --output "$archive"
+          printf '%s  %s\n' 'DB85AE1F45005FFD20E456890585167257151FA99406CCD7AB344F7CF3A766FD' "$archive" | sha256sum --check -
+          mkdir -p "$install_dir"
+          tar -xzf "$archive" -C "$install_dir"
+          chmod +x "$install_dir/pwsh"
+          echo "$install_dir" >> "$GITHUB_PATH"
+          echo "PWSH_PATH=$install_dir/pwsh" >> "$GITHUB_ENV"
+      - name: Install pinned static analyzer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          $modulePath = Join-Path $env:RUNNER_TEMP 'ps-modules'
+          New-Item -ItemType Directory -Force -Path $modulePath | Out-Null
+          Save-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Path $modulePath -Force
+          "PSSCRIPTANALYZER_MODULE_PATH=$modulePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PowerShell: $($PSVersionTable.PSVersion) · PSScriptAnalyzer: $((Get-Module -ListAvailable PSScriptAnalyzer | Where-Object Version -eq '1.25.0' | Select-Object -First 1).Version)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      - run: npm ci --prefix site --ignore-scripts --no-audit --no-fund
+      - name: Scan Gallery and write static API snapshot
+        env:
+          REFRESH_ADVISORIES: ${{ github.event.schedule == '43 23 * * *' || inputs.refresh_advisories }}
+        run: npm run scan
+      - run: npm run build --prefix site
+      - uses: actions/upload-pages-artifact@v5.0.0
+        with:
+          path: site/dist
+
+  deploy:
+    needs: scan-and-build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5.0.1

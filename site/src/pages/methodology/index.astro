@@ -1,0 +1,52 @@
+---
+import Base from '../../layouts/Base.astro';
+---
+
+<Base
+  title="Methodology"
+  description="How EmDash Cyber scans and reports PowerShell Gallery package security signals."
+>
+  <article class="article">
+    <p class="eyebrow">Research notes</p>
+    <h1>Methodology and limits</h1>
+    <p class="lede">The scanner looks for evidence that helps users review a package. It does not certify packages as safe or establish malicious intent automatically.</p>
+
+    <section>
+      <h2>What is scanned</h2>
+      <p>The service discovers publicly listed PowerShell Gallery modules, scripts, and DSC resources. The initial catalog scans the latest listed version of each package in batches; every newly observed version is retained and scanned after launch. Known older pre-launch versions are listed as unscanned.</p>
+      <p>Package archives are downloaded for inspection only. The scanner does not install, import, or execute package code. Archive paths, entry counts, compressed size, expanded size, and individual file sizes are bounded before content is analyzed.</p>
+    </section>
+
+    <section>
+      <h2>Finding sources</h2>
+      <ul>
+        <li>PowerShell static analysis and project-maintained rules for risky code patterns, credential exposure, obfuscation, and suspicious combinations of behavior.</li>
+        <li>Dependency metadata from package manifests and archive metadata, resolved where version constraints and Gallery records permit.</li>
+        <li>Known vulnerability advisories where package identity and affected version ranges can be matched reliably, plus curated Gallery-specific advisory records.</li>
+        <li>Version-to-version changes in package owner metadata, dependency declarations, and file inventory.</li>
+      </ul>
+      <p>Unsupported dependency identities and unresolved version ranges are reported as coverage gaps. An absent advisory match does not mean that a package or dependency is vulnerability-free.</p>
+    </section>
+
+    <section>
+      <h2>How to interpret a result</h2>
+      <p>Every finding has a category, severity, confidence, rule or advisory identifier, and evidence. Evidence excerpts are short and redact likely secret values. Low-confidence behavior patterns are leads for review, not accusations.</p>
+      <ul>
+        <li><strong>Complete:</strong> the configured static checks finished for the package version.</li>
+        <li><strong>Incomplete:</strong> a required download, parse, dependency, or file-type check could not be completed.</li>
+        <li><strong>Not scanned:</strong> no result has been produced for that version.</li>
+      </ul>
+      <p>“No findings detected” means the enabled checks did not report a finding for that version. It does not mean the version is safe.</p>
+    </section>
+
+    <section>
+      <h2>Refresh and availability</h2>
+      <p>Gallery discovery runs hourly on a best-effort schedule. GitHub Actions schedules may be delayed, so each API snapshot reports its last attempt and last successful scan. A snapshot older than two hours is marked stale.</p>
+    </section>
+
+    <section class="article-contact">
+      <h2>Corrections and feedback</h2>
+      <p>Report incorrect results or request a correction through the <a href="https://github.com/emdashcyber/pwsh-package-scanner/issues" target="_blank" rel="noopener noreferrer">project issue tracker</a>. Include the package name, version, finding ID, and relevant context.</p>
+    </section>
+  </article>
+</Base>

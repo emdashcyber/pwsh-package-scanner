@@ -1,0 +1,102 @@
+---
+import Base from '../layouts/Base.astro';
+const base = import.meta.env.BASE_URL;
+---
+
+<Base
+  title="PowerShell Gallery Scanner"
+  description="Open research into package and dependency security signals in the PowerShell Gallery."
+>
+  <section class="hero" aria-labelledby="page-title">
+    <p class="eyebrow">Open supply-chain research</p>
+    <h1 id="page-title">PowerShell Gallery<br /><span>Security Scanner</span></h1>
+    <p class="lede">A continuously updated, evidence-led view of security signals in public PowerShell packages.</p>
+    <div class="hero-actions">
+      <a class="button button-primary" href="#catalog">Explore package results <span aria-hidden="true">↓</span></a>
+      <a class="button button-secondary" href={base + 'methodology/'}>Read the methodology</a>
+    </div>
+  </section>
+
+  <section class="status-panel" aria-labelledby="status-heading">
+    <div class="status-heading-row">
+      <div>
+        <p class="eyebrow">Scanner status</p>
+        <h2 id="status-heading">Loading scan status</h2>
+      </div>
+      <span class="status-pill status-unknown" id="freshness-pill">Checking</span>
+    </div>
+    <p class="status-copy" id="status-copy">Fetching the latest published catalog snapshot.</p>
+    <dl class="metrics" id="metrics">
+      <div><dt>Listed packages</dt><dd id="metric-packages">—</dd></div>
+      <div><dt>Latest versions scanned</dt><dd id="metric-latest">—</dd></div>
+      <div><dt>Versions observed</dt><dd id="metric-versions">—</dd></div>
+      <div><dt>Incomplete scans</dt><dd id="metric-incomplete">—</dd></div>
+      <div><dt>Unscanned versions</dt><dd id="metric-unscanned">—</dd></div>
+    </dl>
+    <p class="updated-line" id="updated-line">Last successful scan: not available</p>
+  </section>
+
+  <section id="catalog" class="catalog" aria-labelledby="catalog-heading">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Public catalog</p>
+        <h2 id="catalog-heading">Search package results</h2>
+      </div>
+      <a class="text-link" href={base + 'api/v1/openapi.json'}>Read the JSON API <span aria-hidden="true">↗</span></a>
+    </div>
+    <form class="filters" id="filters" role="search">
+      <label class="search-field">
+        <span class="visually-hidden">Search package names</span>
+        <span class="search-icon" aria-hidden="true">⌕</span>
+        <input id="search" name="q" type="search" placeholder="Search package names" autocomplete="off" />
+      </label>
+      <label class="select-field">
+        <span class="visually-hidden">Filter by severity</span>
+        <select id="severity-filter" name="severity">
+          <option value="all">Any severity</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+          <option value="info">Informational</option>
+          <option value="none">No findings</option>
+        </select>
+      </label>
+      <label class="select-field">
+        <span class="visually-hidden">Filter by assessment state</span>
+        <select id="assessment-filter" name="assessment">
+          <option value="all">Any scan status</option>
+          <option value="complete">Complete</option>
+          <option value="incomplete">Incomplete</option>
+          <option value="not_scanned">Not scanned</option>
+        </select>
+      </label>
+    </form>
+    <div class="results-meta">
+      <p id="results-count" aria-live="polite">Loading catalog…</p>
+      <p class="results-note">Package contents are not executed. A scan with no findings is not a guarantee of safety.</p>
+    </div>
+    <div id="catalog-message" class="empty-state" role="status">
+      <span class="empty-icon" aria-hidden="true">◌</span>
+      <h3>Loading the published catalog</h3>
+      <p>This page reads static JSON snapshots, so it remains available while the scanner is offline.</p>
+    </div>
+    <div id="package-list" class="package-list" aria-live="polite"></div>
+    <nav id="pagination" class="pagination" aria-label="Catalog pages" hidden>
+      <button class="button button-secondary" id="previous-page" type="button">Previous</button>
+      <span id="page-label">Page 1</span>
+      <button class="button button-secondary" id="next-page" type="button">Next</button>
+    </nav>
+  </section>
+
+  <section class="callout" aria-labelledby="research-note">
+    <div class="callout-mark" aria-hidden="true">i</div>
+    <div>
+      <h2 id="research-note">Research signal, not a verdict</h2>
+      <p>Automated rules can produce false positives and miss issues. Findings include evidence and confidence; definitive claims of malicious behavior require human review.</p>
+    </div>
+    <a class="text-link" href={base + 'methodology/'}>How to read findings <span aria-hidden="true">→</span></a>
+  </section>
+</Base>
+
+<script src="../scripts/dashboard.js"></script>
