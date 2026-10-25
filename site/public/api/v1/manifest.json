@@ -1,9 +1,9 @@
 {
   "schemaVersion": "1.1",
   "status": "ready",
-  "generatedAt": "2026-10-25T15:27:50.202Z",
-  "lastAttemptAt": "2026-10-25T12:23:57.448Z",
-  "lastSuccessfulScan": "2026-10-25T12:23:57.448Z",
+  "generatedAt": "2026-10-25T16:17:48.774Z",
+  "lastAttemptAt": "2026-10-25T16:17:18.412Z",
+  "lastSuccessfulScan": "2026-10-25T16:17:18.412Z",
   "galleryUpdatedThrough": "2026-10-24T11:40:01.07",
   "advisoriesUpdatedAt": null,
   "bootstrap": {
@@ -12,7 +12,7 @@
     "startedAt": "2026-10-24T07:55:34.501Z"
   },
   "reconciliation": {
-    "afterId": "Bibin_New"
+    "afterId": "BuildHelpers"
   },
   "resultRefresh": {
     "id": "binary-dependency-2026-10",
@@ -37,12 +37,12 @@
   "coverage": {
     "listedPackages": 16896,
     "scannedLatestVersions": 16896,
-    "scannedVersions": 18113,
+    "scannedVersions": 18115,
     "incompleteVersions": 461,
     "unscannedLatestVersions": 0,
-    "notScannedVersions": 622760,
-    "binaryFiles": 75534,
-    "binaryFilesChecked": 75475,
+    "notScannedVersions": 622758,
+    "binaryFiles": 75558,
+    "binaryFilesChecked": 75499,
     "binaryFilesPending": 59,
     "binaryScanErrors": 0,
     "missingGalleryDependencies": 638
@@ -182,9 +182,9 @@
   "notice": "",
   "sourceStatus": "available",
   "lastBatch": {
-    "attemptedAt": "2026-10-25T12:23:57.448Z",
-    "packageVersionsProcessed": 0,
-    "packageVersionsSkipped": 1197,
+    "attemptedAt": "2026-10-25T16:17:18.412Z",
+    "packageVersionsProcessed": 2,
+    "packageVersionsSkipped": 1190,
     "resultRefreshProcessed": 0,
     "resultRefreshComplete": true,
     "resultRefreshRemaining": 0,
