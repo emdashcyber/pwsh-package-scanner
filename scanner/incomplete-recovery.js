@@ -34,6 +34,17 @@ function listIncompleteVersions(state) {
   return items.sort((a, b) => compareKeys(a.key, b.key));
 }
 
+function attemptedSince(version, startedAt) {
+  const started = Date.parse(startedAt || '');
+  const attempted = Date.parse(version.lastAttemptAt || '');
+  return Number.isFinite(started) && Number.isFinite(attempted) && attempted >= started;
+}
+
+function pendingRecoveryVersions(state, recovery, afterKey = '') {
+  return listIncompleteVersions(state).filter((item) => item.key > afterKey
+    && !attemptedSince(item.version, recovery.startedAt));
+}
+
 function countIncompleteVersions(state) {
   let count = 0;
   for (const record of state.packages.values()) {
@@ -42,6 +53,98 @@ function countIncompleteVersions(state) {
     }
   }
   return count;
+}
+
+function countPendingRecoveryVersions(state, recovery) {
+  return listIncompleteVersions(state)
+    .filter((item) => !attemptedSince(item.version, recovery.startedAt)).length;
+}
+
+function timestamp(value) {
+  const parsed = Date.parse(value || '');
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function mergeVersionMetadata(checkpointVersion, currentVersion) {
+  const merged = { ...(checkpointVersion.metadata || {}) };
+  const current = currentVersion?.metadata || {};
+  for (const [key, value] of Object.entries(current)) {
+    if (value === null || value === undefined || value === '') continue;
+    if (key === 'updatedAt') {
+      if (timestamp(value) >= timestamp(merged.updatedAt)) merged.updatedAt = value;
+    } else {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+
+/** Merge a recovery checkpoint into a newer checked-in snapshot without replacing newer scan data. */
+export function mergeIncompleteRecoveryCheckpoint(currentState, checkpointState) {
+  if (!currentState?.manifest || !(currentState.packages instanceof Map)
+    || !checkpointState?.manifest || !(checkpointState.packages instanceof Map)) {
+    throw new Error('Current and checkpoint scanner states must be valid.');
+  }
+
+  const previousRecovery = checkpointState.manifest.incompleteRecovery;
+  if (!previousRecovery || !previousRecovery.startedAt) {
+    throw new Error('Recovery checkpoint has no saved recovery start time.');
+  }
+  const startedAt = Date.parse(previousRecovery.startedAt);
+  if (!Number.isFinite(startedAt)) throw new Error('Recovery checkpoint has an invalid start time.');
+
+  let mergedAttempts = 0;
+  let newerCurrentAttemptsKept = 0;
+  for (const checkpointRecord of checkpointState.packages.values()) {
+    let currentRecord = findPackageRecord(currentState, checkpointRecord.name);
+    for (const checkpointVersion of checkpointRecord.versions || []) {
+      const attemptAt = Date.parse(checkpointVersion.lastAttemptAt || '');
+      if (!Number.isFinite(attemptAt) || attemptAt < startedAt) continue;
+
+      const currentVersion = currentRecord?.versions.find((version) => version.version === checkpointVersion.version) || null;
+      if (currentVersion && Math.max(timestamp(currentVersion.lastAttemptAt), timestamp(currentVersion.scannedAt)) >= attemptAt) {
+        newerCurrentAttemptsKept++;
+        continue;
+      }
+
+      if (!currentRecord) {
+        currentRecord = {
+          ...structuredClone(checkpointRecord),
+          versions: [],
+        };
+        currentState.packages.set(normalizePackageName(currentRecord.name), currentRecord);
+      }
+
+      const mergedVersion = structuredClone(checkpointVersion);
+      mergedVersion.metadata = mergeVersionMetadata(checkpointVersion, currentVersion);
+      const index = currentRecord.versions.findIndex((version) => version.version === mergedVersion.version);
+      if (index >= 0) currentRecord.versions[index] = mergedVersion;
+      else currentRecord.versions.push(mergedVersion);
+      currentRecord.versions.sort((a, b) => a.version.localeCompare(b.version, 'en', { numeric: true, sensitivity: 'base' }));
+      mergedAttempts++;
+    }
+  }
+
+  const recovery = structuredClone(previousRecovery);
+  recovery.active = true;
+  recovery.complete = false;
+  recovery.afterKey = '';
+  recovery.completedAt = null;
+  recovery.updatedAt = nowIso();
+  recovery.stillIncomplete = countIncompleteVersions(currentState);
+  recovery.total = Math.max(
+    Number(recovery.total) || 0,
+    (Number(recovery.processed) || 0) + countPendingRecoveryVersions(currentState, recovery),
+  );
+  currentState.manifest.incompleteRecovery = recovery;
+
+  return {
+    mergedAttempts,
+    newerCurrentAttemptsKept,
+    pending: countPendingRecoveryVersions(currentState, recovery),
+    stillIncomplete: recovery.stillIncomplete,
+    afterKey: recovery.afterKey,
+  };
 }
 
 function newRecoveryState(total, startedAt = nowIso()) {
@@ -99,7 +202,7 @@ export async function runIncompleteRecoveryBatch({
   const recovery = state.manifest.incompleteRecovery;
   if (!recovery?.active || recovery.complete) throw new Error('Incomplete recovery has not been started.');
 
-  const remaining = listIncompleteVersions(state).filter((item) => item.key > recovery.afterKey);
+  const remaining = pendingRecoveryVersions(state, recovery, recovery.afterKey);
   const batch = remaining.slice(0, Math.max(1, Math.floor(Number(batchSize) || DEFAULT_INCOMPLETE_RECOVERY_BATCH_SIZE)));
   if (!batch.length) {
     const completedAt = nowIso();
@@ -178,7 +281,7 @@ export async function runIncompleteRecoveryBatch({
   recovery.stillIncomplete = countIncompleteVersions(state);
   recovery.updatedAt = nowIso();
 
-  const nextRemaining = listIncompleteVersions(state).filter((item) => item.key > recovery.afterKey);
+  const nextRemaining = pendingRecoveryVersions(state, recovery, recovery.afterKey);
   if (!nextRemaining.length) {
     recovery.active = false;
     recovery.complete = true;

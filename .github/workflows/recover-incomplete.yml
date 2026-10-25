@@ -93,18 +93,35 @@ jobs:
           saved_base="$RUNNER_TEMP/recovery-base/recovery-base-manifest.json"
           test -f "$saved_base"
           test -f "$RUNNER_TEMP/recovery-snapshot/manifest.json"
-          CURRENT_MANIFEST=site/public/api/v1/manifest.json SAVED_BASE="$saved_base" node --input-type=module <<'NODE'
+          CHECKPOINT_MANIFEST="$RUNNER_TEMP/recovery-snapshot/manifest.json" SAVED_BASE="$saved_base" node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const checkpoint = JSON.parse(readFileSync(process.env.CHECKPOINT_MANIFEST, 'utf8'));
+          const base = JSON.parse(readFileSync(process.env.SAVED_BASE, 'utf8'));
+          if (checkpoint.lastSuccessfulScan !== base.lastSuccessfulScan) {
+            throw new Error('The checkpoint and its saved base manifest do not belong to the same starting snapshot.');
+          }
+          NODE
+          same_base="$(CURRENT_MANIFEST=site/public/api/v1/manifest.json SAVED_BASE="$saved_base" node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const current = JSON.parse(readFileSync(process.env.CURRENT_MANIFEST, 'utf8'));
           const base = JSON.parse(readFileSync(process.env.SAVED_BASE, 'utf8'));
-          if (current.generatedAt !== base.generatedAt || current.lastSuccessfulScan !== base.lastSuccessfulScan) {
-            throw new Error('The main snapshot changed since this checkpoint. Start a new recovery from current main to avoid overwriting newer scan data.');
-          }
+          console.log(String(current.generatedAt === base.generatedAt
+            && current.lastSuccessfulScan === base.lastSuccessfulScan));
           NODE
-          rm -rf site/public/api/v1
-          mkdir -p site/public/api/v1
-          cp -a "$RUNNER_TEMP/recovery-snapshot/." site/public/api/v1/
-          cp "$saved_base" "$RUNNER_TEMP/recovery-base-manifest.json"
+          )"
+          if [[ "$same_base" == 'true' ]]; then
+            rm -rf site/public/api/v1
+            mkdir -p site/public/api/v1
+            cp -a "$RUNNER_TEMP/recovery-snapshot/." site/public/api/v1/
+            cp "$saved_base" "$RUNNER_TEMP/recovery-base-manifest.json"
+            echo 'Restored checkpoint with its original snapshot base.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            checkpoint_public="$RUNNER_TEMP/recovery-checkpoint-public"
+            mkdir -p "$checkpoint_public/api/v1"
+            cp -a "$RUNNER_TEMP/recovery-snapshot/." "$checkpoint_public/api/v1/"
+            node scripts/merge-incomplete-recovery-checkpoint.js "$checkpoint_public"
+            echo 'The checked-in snapshot advanced after the checkpoint. Merged its completed recovery attempts into current main and resumed the remaining incomplete versions.' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Install ClamAV and refresh signatures
         shell: bash

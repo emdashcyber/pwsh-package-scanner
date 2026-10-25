@@ -4,7 +4,11 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { addNotScannedVersion, emptyState, loadLocalState, mergePackageVersion, writeSnapshot } from '../scanner/state.js';
-import { runIncompleteRecoveryBatch, startIncompleteRecovery } from '../scanner/incomplete-recovery.js';
+import {
+  mergeIncompleteRecoveryCheckpoint,
+  runIncompleteRecoveryBatch,
+  startIncompleteRecovery,
+} from '../scanner/incomplete-recovery.js';
 import { createZip, packageEntries } from './helpers/zip-fixture.js';
 
 function item(name, version = '1.0.0') {
@@ -151,4 +155,72 @@ test('local recovery processes only incomplete versions and resumes from its sav
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('merges an old checkpoint into newer main without rescanning attempted versions', async () => {
+  const current = emptyState();
+  current.manifest.generatedAt = '2026-10-25T11:58:34.759Z';
+  const checkpoint = emptyState();
+  const startedAt = '2026-10-25T06:26:37.129Z';
+  checkpoint.manifest.incompleteRecovery = {
+    active: true,
+    complete: false,
+    afterKey: 'beta@1.0.0',
+    total: 4,
+    processed: 2,
+    completed: 1,
+    stillIncomplete: 3,
+    failed: 0,
+    startedAt,
+    updatedAt: '2026-10-25T11:47:17.456Z',
+    completedAt: null,
+  };
+
+  for (const name of ['Aardvark', 'Alpha', 'Beta', 'Gamma']) {
+    const target = item(name);
+    mergePackageVersion(current, target, incompleteSnapshot(target));
+    current.packages.get(name.toLocaleLowerCase('en-US')).versions[0].lastAttemptAt = '2026-10-25T05:00:00.000Z';
+  }
+  current.packages.get('alpha').metadata.title = 'Current Gallery title';
+  current.packages.get('alpha').versions[0].metadata.updatedAt = '2026-10-25T11:00:00.000Z';
+
+  const recoveredAlpha = item('Alpha');
+  mergePackageVersion(checkpoint, recoveredAlpha, {
+    ...incompleteSnapshot(recoveredAlpha),
+    assessment: 'complete',
+    scannedAt: '2026-10-25T07:00:00.000Z',
+    coverage: { archive: true, powerShellAnalysis: true, dependencyResolution: true, advisories: true, binaryScanning: true },
+  });
+  checkpoint.packages.get('alpha').versions[0].lastAttemptAt = '2026-10-25T07:00:00.000Z';
+
+  const recoveredBeta = item('Beta');
+  mergePackageVersion(checkpoint, recoveredBeta, incompleteSnapshot(recoveredBeta));
+  checkpoint.packages.get('beta').versions[0].lastAttemptAt = '2026-10-25T07:05:00.000Z';
+
+  const outcome = mergeIncompleteRecoveryCheckpoint(current, checkpoint);
+  assert.equal(outcome.mergedAttempts, 2);
+  assert.equal(outcome.pending, 2);
+  assert.equal(current.packages.get('alpha').versions[0].assessment, 'complete');
+  assert.equal(current.packages.get('alpha').metadata.title, 'Current Gallery title');
+  assert.equal(current.packages.get('alpha').versions[0].metadata.updatedAt, '2026-10-25T11:00:00.000Z');
+  assert.equal(current.packages.get('beta').versions[0].lastAttemptAt, '2026-10-25T07:05:00.000Z');
+  assert.equal(current.manifest.incompleteRecovery.afterKey, '');
+  assert.equal(current.manifest.incompleteRecovery.active, true);
+
+  const attempted = [];
+  const batch = await runIncompleteRecoveryBatch({
+    state: current,
+    gallery: {
+      getPackageVersion: async (name, version) => {
+        attempted.push(name + '@' + version);
+        throw new Error('Gallery temporarily unavailable.');
+      },
+    },
+    batchSize: 2,
+    concurrency: 1,
+    runPssa: false,
+  });
+  assert.deepEqual(attempted, ['Aardvark@1.0.0', 'Gamma@1.0.0']);
+  assert.equal(batch.processed, 2);
+  assert.equal(batch.complete, true);
 });
