@@ -4,7 +4,10 @@ import { resolveDependencyGraph } from './dependencies.js';
 
 const DEFAULT_API_ROOT = 'https://www.powershellgallery.com/api/v2';
 const DEFAULT_TIMEOUT_MS = 20_000;
+const DEFAULT_PACKAGE_TIMEOUT_MS = 120_000;
+const MAX_PACKAGE_BYTES = 100 * 1024 * 1024;
 const MAX_FEED_BYTES = 25 * 1024 * 1024;
+const BYTES_PER_MIB = 1024 * 1024;
 
 function quoteOData(value) {
   return "'" + String(value).replaceAll("'", "''") + "'";
@@ -20,8 +23,13 @@ function assertGalleryUrl(value, allowedOrigin) {
 
 async function readLimitedBody(response, maxBytes) {
   if (!response.body) throw new Error('Gallery response had no body.');
+  const sizeLimit = Number.isInteger(maxBytes / BYTES_PER_MIB)
+    ? (maxBytes / BYTES_PER_MIB) + ' MiB'
+    : maxBytes + ' bytes';
   const declaredLength = Number(response.headers.get('content-length'));
-  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) throw new Error('Gallery response exceeds its size limit.');
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new Error('Gallery response exceeds its ' + sizeLimit + ' size limit.');
+  }
   const reader = response.body.getReader();
   const chunks = [];
   let total = 0;
@@ -32,7 +40,7 @@ async function readLimitedBody(response, maxBytes) {
       total += value.byteLength;
       if (total > maxBytes) {
         await reader.cancel();
-        throw new Error('Gallery response exceeds its size limit.');
+        throw new Error('Gallery response exceeds its ' + sizeLimit + ' size limit.');
       }
       chunks.push(Buffer.from(value));
     }
@@ -48,6 +56,7 @@ export class GalleryClient {
     fetcher = globalThis.fetch,
     retryCount = 3,
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    packageTimeoutMs = DEFAULT_PACKAGE_TIMEOUT_MS,
     wait = sleep,
     versionCacheLimit = 32,
   } = {}) {
@@ -57,6 +66,7 @@ export class GalleryClient {
     this.fetcher = fetcher;
     this.retryCount = retryCount;
     this.timeoutMs = timeoutMs;
+    this.packageTimeoutMs = packageTimeoutMs;
     this.wait = wait;
     this.versionCacheLimit = Math.max(1, Math.floor(Number(versionCacheLimit) || 32));
     this.versionCache = new Map();
@@ -74,7 +84,13 @@ export class GalleryClient {
     this.versionCache.clear();
   }
 
-  async request(url, { maxBytes = MAX_FEED_BYTES, method = 'GET', body, headers = {} } = {}) {
+  async request(url, {
+    maxBytes = MAX_FEED_BYTES,
+    method = 'GET',
+    body,
+    headers = {},
+    timeoutMs = this.timeoutMs,
+  } = {}) {
     let lastError;
     for (let attempt = 0; attempt <= this.retryCount; attempt++) {
       try {
@@ -86,7 +102,7 @@ export class GalleryClient {
             'User-Agent': 'EmDashCyber-PowerShell-Gallery-Scanner/0.1',
             ...headers,
           },
-          signal: AbortSignal.timeout(this.timeoutMs),
+          signal: AbortSignal.timeout(timeoutMs),
         });
         if (response.status === 429 || response.status >= 500) {
           const retryAfter = Number(response.headers.get('retry-after'));
@@ -170,6 +186,15 @@ export class GalleryClient {
     }
   }
 
+  async getPackageVersion(name, version) {
+    const url = new URL(this.apiRoot + '/Packages');
+    url.searchParams.set('$filter', 'Id eq ' + quoteOData(name) + ' and Version eq ' + quoteOData(version));
+    url.searchParams.set('$top', '1');
+    const entries = await this.fetchPages(url.href, 1);
+    return entries.find((item) => item.name.toLocaleLowerCase('en-US') === String(name).toLocaleLowerCase('en-US')
+      && item.version === String(version)) || null;
+  }
+
   resolveDependencyGraph(dependencies, options) {
     return resolveDependencyGraph(dependencies, this, options);
   }
@@ -178,9 +203,10 @@ export class GalleryClient {
     return this.packageRoot + encodeURIComponent(name) + '/' + encodeURIComponent(version);
   }
 
-  async downloadPackage(name, version, maxBytes = 40 * 1024 * 1024) {
+  async downloadPackage(name, version, maxBytes = MAX_PACKAGE_BYTES) {
     return this.request(this.packageUrl(name, version), {
       maxBytes,
+      timeoutMs: this.packageTimeoutMs,
       headers: { Accept: 'application/octet-stream, application/zip;q=0.9, */*;q=0.5' },
     });
   }

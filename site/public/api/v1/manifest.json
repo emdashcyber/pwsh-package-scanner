@@ -20,6 +20,19 @@
     "afterKey": "",
     "total": 0
   },
+  "incompleteRecovery": {
+    "active": false,
+    "complete": false,
+    "afterKey": "",
+    "total": 0,
+    "processed": 0,
+    "completed": 0,
+    "stillIncomplete": 0,
+    "failed": 0,
+    "startedAt": null,
+    "updatedAt": null,
+    "completedAt": null
+  },
   "freshnessWindowHours": 6,
   "coverage": {
     "listedPackages": 16896,

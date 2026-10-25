@@ -67,6 +67,23 @@ test('Gallery preserves not-found responses for dependency resolution without re
   assert.equal(calls, 1);
 });
 
+test('exact version lookup quotes package and version values in the OData filter', async () => {
+  let requested;
+  const client = new GalleryClient({
+    apiRoot: 'https://gallery.test/api/v2',
+    retryCount: 0,
+    fetcher: async (url) => {
+      requested = new URL(url);
+      return new Response(feed("O'Brien", '1.2.3'));
+    },
+  });
+  const result = await client.getPackageVersion("O'Brien", '1.2.3');
+  assert.equal(result.name, "O'Brien");
+  assert.equal(result.version, '1.2.3');
+  assert.equal(requested.searchParams.get('$filter'), "Id eq 'O''Brien' and Version eq '1.2.3'");
+  assert.equal(requested.searchParams.get('$top'), '1');
+});
+
 test('historical version cache is bounded and can be cleared between scan batches', async () => {
   const client = new GalleryClient({
     apiRoot: 'https://gallery.test/api/v2',

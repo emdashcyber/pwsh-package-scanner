@@ -56,14 +56,21 @@ test('supply-chain IDs stay canonical while per-file evidence remains distinct',
 });
 
 test('corrupt and oversized packages do not get complete assessments', () => {
+  assert.deepEqual(ARCHIVE_LIMITS, {
+    compressedBytes: 100 * 1024 * 1024,
+    entryCount: 5000,
+    entryBytes: 35 * 1024 * 1024,
+    totalBytes: 150 * 1024 * 1024,
+    compressionRatio: 500,
+  });
   const valid = createZip(packageEntries());
   const corrupt = Buffer.from(valid);
   const central = corrupt.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
   corrupt.writeUInt32LE(0, central + 16);
   assert.equal(inspectNupkg(corrupt).complete, false);
 
-  const oversizedContent = 'x'.repeat(ARCHIVE_LIMITS.entryBytes + 1);
-  const oversized = inspectNupkg(createZip([{ name: 'large.ps1', content: oversizedContent }]));
+  const customLimits = { ...ARCHIVE_LIMITS, entryBytes: 8 };
+  const oversized = inspectNupkg(createZip([{ name: 'large.ps1', content: 'x'.repeat(9) }]), customLimits);
   assert.equal(oversized.complete, false);
   assert.ok(oversized.warnings.some((item) => item.includes('per-file')));
 });

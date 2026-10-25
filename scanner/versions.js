@@ -38,15 +38,20 @@ function parseBoundedRange(range) {
   if (!value || value === '*') return [{ min: null, max: null, includeMin: false, includeMax: false }];
   const match = value.match(/^([[(])\s*([^,]*)\s*,\s*([^\])}]*)\s*([\])])$/);
   if (match) {
+    const min = match[2].trim() || null;
+    const max = match[3].trim() || null;
+    if ((min && !parseVersion(min)) || (max && !parseVersion(max))) return null;
     return [{
-      min: match[2].trim() || null,
-      max: match[3].trim() || null,
+      min,
+      max,
       includeMin: match[1] === '[',
       includeMax: match[4] === ']',
     }];
   }
   const exact = value.match(/^\[([^\]]+)\]$/);
-  if (exact) return [{ min: exact[1].trim(), max: exact[1].trim(), includeMin: true, includeMax: true }];
+  if (exact && parseVersion(exact[1].trim())) {
+    return [{ min: exact[1].trim(), max: exact[1].trim(), includeMin: true, includeMax: true }];
+  }
   const bare = value.match(/^(\d+(?:\.\d+){0,3}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/);
   if (bare) return [{ min: bare[1], max: null, includeMin: true, includeMax: false }];
   return null;
@@ -55,7 +60,16 @@ function parseBoundedRange(range) {
 export function parseNugetRange(value) {
   const source = String(value || '').trim();
   if (!source || source === '*') return [{ min: null, max: null, includeMin: false, includeMax: false }];
-  const ranges = source.split('|').map(parseBoundedRange);
+  const ranges = source.split('|').map((range) => {
+    const text = range.trim();
+    if (text.endsWith(':')) {
+      const withoutGallerySuffix = text.slice(0, -1).trim();
+      if (withoutGallerySuffix && parseBoundedRange(withoutGallerySuffix)) {
+        return parseBoundedRange(withoutGallerySuffix);
+      }
+    }
+    return parseBoundedRange(text);
+  });
   return ranges.some((range) => range === null) ? null : ranges.flat();
 }
 

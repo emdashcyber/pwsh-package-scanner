@@ -1,10 +1,10 @@
 import { inflateRawSync } from 'node:zlib';
 
 export const ARCHIVE_LIMITS = Object.freeze({
-  compressedBytes: 40 * 1024 * 1024,
+  compressedBytes: 100 * 1024 * 1024,
   entryCount: 5000,
-  entryBytes: 8 * 1024 * 1024,
-  totalBytes: 100 * 1024 * 1024,
+  entryBytes: 35 * 1024 * 1024,
+  totalBytes: 150 * 1024 * 1024,
   compressionRatio: 500,
 });
 
@@ -66,7 +66,9 @@ function readUtf8Name(buffer, start, length, utf8) {
 
 export function inspectNupkg(buffer, limits = ARCHIVE_LIMITS) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 22) throw new Error('Package archive is too small to be a ZIP file.');
-  if (buffer.length > limits.compressedBytes) throw new Error('Package archive exceeds the compressed-size limit.');
+  if (buffer.length > limits.compressedBytes) {
+    throw new Error('Package archive exceeds the configured ' + Math.ceil(limits.compressedBytes / (1024 * 1024)) + ' MiB compressed-size limit.');
+  }
   const end = findEndRecord(buffer);
   const diskNumber = buffer.readUInt16LE(end + 4);
   const centralDisk = buffer.readUInt16LE(end + 6);
@@ -78,7 +80,9 @@ export function inspectNupkg(buffer, limits = ARCHIVE_LIMITS) {
   if (diskNumber !== 0 || centralDisk !== 0 || diskEntries !== entryCount) throw new Error('Multi-volume ZIP archives are not supported.');
   if (entryCount === 0xffff || centralSize === 0xffffffff || centralOffset === 0xffffffff) throw new Error('ZIP64 archives are not supported within the configured package limits.');
   if (end + 22 + commentLength > buffer.length || centralOffset + centralSize > end) throw new Error('ZIP central directory is outside the archive bounds.');
-  if (entryCount > limits.entryCount) throw new Error('Package archive contains more entries than the configured limit.');
+  if (entryCount > limits.entryCount) {
+    throw new Error('Package archive contains more than ' + limits.entryCount.toLocaleString('en-US') + ' entries.');
+  }
 
   const result = { files: [], binaries: [], inventory: [], warnings: [], complete: true, entryCount };
   let totalUncompressed = 0;
@@ -124,7 +128,7 @@ export function inspectNupkg(buffer, limits = ARCHIVE_LIMITS) {
     totalUncompressed += uncompressedSize;
     if (totalUncompressed > limits.totalBytes) {
       result.complete = false;
-      result.warnings.push('Expanded package size exceeds the configured limit.');
+      result.warnings.push('Expanded package size exceeds the configured ' + Math.ceil(limits.totalBytes / (1024 * 1024)) + ' MiB limit.');
       break;
     }
     const extension = normalized.split('.').at(-1)?.toLocaleLowerCase('en-US') || '';
@@ -138,7 +142,7 @@ export function inspectNupkg(buffer, limits = ARCHIVE_LIMITS) {
     if (eligible) {
       if (uncompressedSize > limits.entryBytes) {
         result.complete = false;
-        result.warnings.push('A package file exceeds the per-file analysis limit.');
+        result.warnings.push('A package file exceeds the ' + Math.ceil(limits.entryBytes / (1024 * 1024)) + ' MiB per-file analysis limit.');
         offset = endEntry;
         continue;
       }
@@ -156,7 +160,7 @@ export function inspectNupkg(buffer, limits = ARCHIVE_LIMITS) {
       }
       if (uncompressedSize > 1024 * 1024 && (compressedSize === 0 || uncompressedSize / compressedSize > limits.compressionRatio)) {
         result.complete = false;
-        result.warnings.push('A package file exceeds the configured compression ratio.');
+        result.warnings.push('A package file exceeds the configured ' + limits.compressionRatio + ':1 compression ratio limit.');
         offset = endEntry;
         continue;
       }

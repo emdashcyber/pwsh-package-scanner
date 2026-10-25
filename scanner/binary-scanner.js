@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { mapLimit, safeString, sha256 } from './util.js';
+import { ARCHIVE_LIMITS } from './zip.js';
 
 const versionCache = new Map();
 
@@ -45,7 +46,14 @@ function parseVersion(text) {
 async function getToolVersion(command, workingDirectory) {
   const cached = versionCache.get(command);
   if (cached) return cached;
-  const result = await run(command, ['--version'], workingDirectory);
+  const args = [];
+  if (basename(command).toLocaleLowerCase('en-US').includes('clamdscan') && process.env.CLAMAV_CLAMD_CONFIG) {
+    args.push('--config-file=' + process.env.CLAMAV_CLAMD_CONFIG);
+  } else if (basename(command).toLocaleLowerCase('en-US').includes('clamscan') && process.env.CLAMAV_DATABASE_DIRECTORY) {
+    args.push('--database=' + process.env.CLAMAV_DATABASE_DIRECTORY);
+  }
+  args.push('--version');
+  const result = await run(command, args, workingDirectory);
   if (result.code !== 0) throw new Error(result.stderr.trim() || 'ClamAV version query failed.');
   const parsed = parseVersion(result.stdout || result.stderr);
   if (!parsed.engineVersion) throw new Error('ClamAV returned an unrecognized version string.');
@@ -59,8 +67,19 @@ async function scanOne(binary, index, command) {
     const file = join(root, 'artifact-' + String(index + 1).padStart(5, '0') + '.bin');
     await writeFile(file, binary.content, { mode: 0o600, flag: 'wx' });
     const versions = await getToolVersion(command, root);
-    const args = ['--no-summary', '--stdout'];
-    if (basename(command).toLocaleLowerCase('en-US').includes('clamdscan')) args.push('--fdpass');
+    const commandName = basename(command).toLocaleLowerCase('en-US');
+    const args = [];
+    if (commandName.includes('clamdscan')) {
+      if (process.env.CLAMAV_CLAMD_CONFIG) args.push('--config-file=' + process.env.CLAMAV_CLAMD_CONFIG);
+      args.push('--no-summary', '--stdout', '--fdpass');
+    } else {
+      args.push('--no-summary', '--stdout');
+      if (commandName.includes('clamscan')) {
+        args.push('--max-filesize=' + Math.ceil(ARCHIVE_LIMITS.entryBytes / (1024 * 1024)) + 'M');
+        args.push('--max-scansize=' + Math.ceil(ARCHIVE_LIMITS.totalBytes / (1024 * 1024)) + 'M');
+        if (process.env.CLAMAV_DATABASE_DIRECTORY) args.push('--database=' + process.env.CLAMAV_DATABASE_DIRECTORY);
+      }
+    }
     args.push(file);
     const result = await run(command, args, root);
     const output = (result.stdout + '\n' + result.stderr).trim();

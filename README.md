@@ -61,6 +61,18 @@ The command reads and resumes the snapshot under `site/public/api/v1/`, processe
 
 The local snapshot in Git is the scanner's state source of truth. Each workflow run merges with that checked-in snapshot, writes scan results under `site/public/api/v1/`, validates and commits only changed API data, then builds and deploys the same snapshot. Set `PSGALLERY_API_ROOT` to use a compatible test Gallery endpoint. Set `PSSCRIPTANALYZER_ENABLED=false` only for local experiments; those results do not include the pinned analyzer checks. Set `CLAMAV_SCAN_COMMAND` to `clamscan` or `clamdscan` and `CLAMAV_DATABASE_VERSION`/`CLAMAV_DATABASE_DATE` to report local signature metadata.
 
+To run the one-time local recovery for saved incomplete versions:
+
+```sh
+CLAMAV_SCAN_COMMAND=clamdscan npm run scan:recover-incomplete
+```
+
+Recovery reads the local snapshot, refreshes Gallery metadata for each exact version, and processes only versions still marked `incomplete`. It runs one package at a time and saves a resumable checkpoint after every 100 versions. If interrupted, run the same command again. Use `npm run scan:recover-incomplete:restart` to start a fresh pass over versions that remain incomplete. Completed and `not_scanned` versions are never selected. Results are written locally under `site/public/api/v1/`; the command does not publish them.
+
+The recovery preflight requires PowerShell 7, PSScriptAnalyzer 1.25.0, a working ClamAV scanner, and a daily signature database no older than seven days. When using `clamdscan`, its active `clamd.conf` must allow at least 35 MiB for `MaxFileSize` and `MaxScanSize`; set `CLAMAV_CLAMD_CONFIG` if the file is not at the platform default location. The current recovery limits are 100 MiB compressed download, 35 MiB per analyzed archive entry, and 150 MiB total expanded size. The 5,000-entry and 500:1 compression-ratio limits remain in place. Versions blocked by those limits or other unresolved coverage gaps remain incomplete.
+
+To run the recovery on an ephemeral GitHub Actions runner instead of your computer, push the scanner changes to `main`, then open **Actions → Recover incomplete package scans → Run workflow**. Leave `resume_run_id` blank for the first run. ClamAV runs only inside the temporary runner; it does not start a daemon on your Mac. The workflow checkpoints every 100 versions and keeps the recovery snapshot artifact for seven days. If a run times out or fails after checkpointing, enter its run ID from the workflow summary in `resume_run_id`. If a pass finishes with versions still incomplete, use `restart` to begin another pass over those remaining incomplete versions. A successful pass validates the snapshot, commits changed data, and deploys the site. This workflow shares a concurrency lock with the scheduled scanner so they cannot publish competing snapshots.
+
 Build and preview the static site from `site/`:
 
 ```sh

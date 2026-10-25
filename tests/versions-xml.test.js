@@ -32,6 +32,14 @@ test('dependency parser preserves NuGet range delimiters and removes duplicate d
   ]);
 });
 
+test('Gallery dependency ranges with a trailing separator are normalized only when valid', () => {
+  assert.equal(versionMatchesRange('13.5.1.25718932', '[13.5.1.25718932, 13.5.1.25718932]:'), true);
+  assert.equal(versionMatchesRange('3.1.0', '[3.1.0, ):'), true);
+  assert.equal(versionMatchesRange('0.1.0', '(, ):'), true);
+  assert.equal(versionMatchesRange('1.0.0', ':'), null);
+  assert.equal(versionMatchesRange('1.0.0', '[1.0.0,invalid]:'), null);
+});
+
 test('NuGet ranges support exact, open, bounded, and union ranges', () => {
   assert.equal(versionMatchesRange('1.5.0', '[1.0.0,2.0.0)'), true);
   assert.equal(versionMatchesRange('2.0.0', '[1.0.0,2.0.0)'), false);

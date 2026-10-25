@@ -1,0 +1,302 @@
+name: Recover incomplete package scans
+
+on:
+  workflow_dispatch:
+    inputs:
+      resume_run_id:
+        description: Run ID of an earlier interrupted recovery to resume from
+        required: false
+        type: string
+        default: ''
+      restart:
+        description: Start a fresh pass over versions still marked incomplete
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# The recovery and scheduled scanner both update the same snapshot.
+concurrency:
+  group: gallery-research-scan
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      - name: Install PowerShell 7.6.8
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/powershell-7.6.8-linux-x64.tar.gz"
+          install_dir="$RUNNER_TEMP/pwsh-7.6.8"
+          curl --fail --location --silent --show-error "https://github.com/PowerShell/PowerShell/releases/download/v7.6.8/powershell-7.6.8-linux-x64.tar.gz" --output "$archive"
+          printf '%s  %s\n' '59112E38AD83350E4F6DC0195953C66B5926792F300CA2E7691B8242E7A16E7F' "$archive" | sha256sum --check -
+          mkdir -p "$install_dir"
+          tar -xzf "$archive" -C "$install_dir"
+          chmod +x "$install_dir/pwsh"
+          echo "$install_dir" >> "$GITHUB_PATH"
+          echo "PWSH_PATH=$install_dir/pwsh" >> "$GITHUB_ENV"
+
+      - name: Install pinned PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $modulePath = Join-Path $env:RUNNER_TEMP 'ps-modules'
+          New-Item -ItemType Directory -Force -Path $modulePath | Out-Null
+          Save-PSResource -Name PSScriptAnalyzer -Version 1.25.0 -Repository PSGallery -Path $modulePath -TrustRepository
+          "PSSCRIPTANALYZER_MODULE_PATH=$modulePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PowerShell: $($PSVersionTable.PSVersion) · PSScriptAnalyzer: $((Get-Module -ListAvailable PSScriptAnalyzer | Where-Object Version -eq '1.25.0' | Select-Object -First 1).Version)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Save the base snapshot identity
+        shell: bash
+        run: cp site/public/api/v1/manifest.json "$RUNNER_TEMP/recovery-base-manifest.json"
+
+      - name: Download prior recovery snapshot
+        if: ${{ inputs.resume_run_id != '' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: incomplete-recovery-snapshot
+          path: ${{ runner.temp }}/recovery-snapshot
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download prior recovery base manifest
+        if: ${{ inputs.resume_run_id != '' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: incomplete-recovery-base
+          path: ${{ runner.temp }}/recovery-base
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Restore and verify recovery checkpoint
+        if: ${{ inputs.resume_run_id != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          saved_base="$RUNNER_TEMP/recovery-base/recovery-base-manifest.json"
+          test -f "$saved_base"
+          test -f "$RUNNER_TEMP/recovery-snapshot/manifest.json"
+          CURRENT_MANIFEST=site/public/api/v1/manifest.json SAVED_BASE="$saved_base" node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const current = JSON.parse(readFileSync(process.env.CURRENT_MANIFEST, 'utf8'));
+          const base = JSON.parse(readFileSync(process.env.SAVED_BASE, 'utf8'));
+          if (current.generatedAt !== base.generatedAt || current.lastSuccessfulScan !== base.lastSuccessfulScan) {
+            throw new Error('The main snapshot changed since this checkpoint. Start a new recovery from current main to avoid overwriting newer scan data.');
+          }
+          NODE
+          rm -rf site/public/api/v1
+          mkdir -p site/public/api/v1
+          cp -a "$RUNNER_TEMP/recovery-snapshot/." site/public/api/v1/
+          cp "$saved_base" "$RUNNER_TEMP/recovery-base-manifest.json"
+
+      - name: Install ClamAV and refresh signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes clamav clamav-daemon
+          sudo systemctl stop clamav-freshclam.service || true
+          sudo freshclam --stdout
+
+          clam_config=/etc/clamav/clamd.conf
+          set_clamd_option() {
+            local key="$1"
+            local value="$2"
+            if sudo grep -Eq "^[# ]*${key}[[:space:]]" "$clam_config"; then
+              sudo sed -i -E "s|^[# ]*${key}[[:space:]].*|${key} ${value}|" "$clam_config"
+            else
+              printf '%s %s\n' "$key" "$value" | sudo tee -a "$clam_config" >/dev/null
+            fi
+          }
+          set_clamd_option MaxFileSize 40M
+          set_clamd_option MaxScanSize 150M
+          if ! sudo grep -q '^LocalSocket ' "$clam_config"; then
+            echo 'LocalSocket /run/clamav/clamd.ctl' | sudo tee -a "$clam_config" >/dev/null
+          fi
+          sudo sed -i 's/^#LocalSocketMode.*/LocalSocketMode 666/' "$clam_config"
+          if ! sudo grep -q '^LocalSocketMode ' "$clam_config"; then
+            echo 'LocalSocketMode 666' | sudo tee -a "$clam_config" >/dev/null
+          fi
+          sudo systemctl restart clamav-daemon.service
+          for attempt in $(seq 1 60); do
+            if clamdscan --ping=3 >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          clamdscan --ping=3
+          clamdscan --version | tee -a "$GITHUB_STEP_SUMMARY"
+
+          db_versions=()
+          db_dates=()
+          for database in /var/lib/clamav/{main,daily,bytecode}.{cld,cvd}; do
+            [[ -f "$database" ]] || continue
+            info="$(sudo sigtool --info "$database")"
+            version="$(awk -F': ' '$1 == "Version" { print $2; exit }' <<< "$info")"
+            build_date="$(awk -F': ' '$1 == "Build time" { print $2; exit }' <<< "$info")"
+            label="$(basename "${database%.*}")"
+            [[ -n "$version" ]] && db_versions+=("$label:$version")
+            [[ -n "$build_date" ]] && db_dates+=("$label:$build_date")
+          done
+          ((${#db_versions[@]} > 0)) || { echo 'No ClamAV signature database version found.' >&2; exit 1; }
+          printf -v version_list '%s,' "${db_versions[@]}"
+          printf -v date_list '%s,' "${db_dates[@]}"
+          echo "CLAMAV_DATABASE_VERSION=${version_list%,}" >> "$GITHUB_ENV"
+          echo "CLAMAV_DATABASE_DATE=${date_list%,}" >> "$GITHUB_ENV"
+          echo 'CLAMAV_SCAN_COMMAND=clamdscan' >> "$GITHUB_ENV"
+          echo 'CLAMAV_CLAMD_CONFIG=/etc/clamav/clamd.conf' >> "$GITHUB_ENV"
+          echo 'CLAMAV_DATABASE_DIRECTORY=/var/lib/clamav' >> "$GITHUB_ENV"
+
+      - name: Run resumable incomplete recovery
+        id: recovery
+        timeout-minutes: 330
+        env:
+          RECOVERY_RESTART: ${{ inputs.restart }}
+          CLAMAV_SCAN_COMMAND: clamdscan
+          CLAMAV_CLAMD_CONFIG: /etc/clamav/clamd.conf
+          CLAMAV_DATABASE_DIRECTORY: /var/lib/clamav
+          SCAN_CONCURRENCY: '1'
+        run: |
+          args=(--recover-incomplete)
+          if [[ "$RECOVERY_RESTART" == 'true' ]]; then args+=(--restart); fi
+          node scripts/scan-gallery.js "${args[@]}"
+
+      - name: Validate recovered snapshot
+        if: ${{ success() }}
+        run: node scripts/validate-api-snapshot.js site/public/api/v1
+
+      - name: Save recovery snapshot artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: incomplete-recovery-snapshot
+          path: site/public/api/v1
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
+
+      - name: Save base manifest for safe resume
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: incomplete-recovery-base
+          path: ${{ runner.temp }}/recovery-base-manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Write run and resume details
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          {
+            echo "Recovery workflow run ID: $GITHUB_RUN_ID"
+            echo 'If the scan timed out or failed after checkpointing, dispatch this workflow again and enter that run ID in `resume_run_id`. If the pass completed but versions remain incomplete, use `restart` to retry the remaining incomplete versions.'
+            echo 'The workflow saves the current API snapshot artifact even when recovery fails. A successful recovery publishes changed data to main and deploys the site.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    needs: recover
+    if: ${{ needs.recover.result == 'success' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      actions: read
+      contents: write
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: incomplete-recovery-snapshot
+          path: ${{ runner.temp }}/recovered-api-v1
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: incomplete-recovery-base
+          path: ${{ runner.temp }}/recovered-base
+
+      - name: Validate and commit recovered data
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURRENT_MANIFEST=site/public/api/v1/manifest.json SAVED_BASE="$RUNNER_TEMP/recovered-base/recovery-base-manifest.json" node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const current = JSON.parse(readFileSync(process.env.CURRENT_MANIFEST, 'utf8'));
+          const base = JSON.parse(readFileSync(process.env.SAVED_BASE, 'utf8'));
+          if (current.generatedAt !== base.generatedAt || current.lastSuccessfulScan !== base.lastSuccessfulScan) {
+            throw new Error('The main snapshot changed while recovery was running. The recovered snapshot was not published; restart recovery from current main.');
+          }
+          NODE
+          node scripts/validate-api-snapshot.js "$RUNNER_TEMP/recovered-api-v1"
+          rm -rf site/public/api/v1
+          mkdir -p site/public/api/v1
+          cp -a "$RUNNER_TEMP/recovered-api-v1/." site/public/api/v1/
+          git add site/public/api/v1
+          if git diff --cached --quiet -- site/public/api/v1; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'No snapshot changes to publish.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Recover incomplete PowerShell package scans'
+          git push origin HEAD:main
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+          echo 'Committed recovered scan state to main.' >> "$GITHUB_STEP_SUMMARY"
+
+  build-and-deploy:
+    needs: publish
+    if: ${{ needs.publish.outputs.changed == 'true' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - run: npm ci --prefix site --ignore-scripts --no-audit --no-fund
+      - run: npm run build --prefix site
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build-and-deploy
+    runs-on: ubuntu-26.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
