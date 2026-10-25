@@ -1,9 +1,9 @@
 {
   "schemaVersion": "1.1",
   "status": "ready",
-  "generatedAt": "2026-10-25T11:58:34.759Z",
-  "lastAttemptAt": "2026-10-25T11:58:14.098Z",
-  "lastSuccessfulScan": "2026-10-25T11:58:14.098Z",
+  "generatedAt": "2026-10-25T12:24:12.243Z",
+  "lastAttemptAt": "2026-10-25T12:23:57.448Z",
+  "lastSuccessfulScan": "2026-10-25T12:23:57.448Z",
   "galleryUpdatedThrough": "2026-10-24T11:40:01.07",
   "advisoriesUpdatedAt": null,
   "bootstrap": {
@@ -12,7 +12,7 @@
     "startedAt": "2026-10-24T07:55:34.501Z"
   },
   "reconciliation": {
-    "afterId": "AzureRM.ServerManagement"
+    "afterId": "Bibin_New"
   },
   "resultRefresh": {
     "id": "binary-dependency-2026-10",
@@ -182,9 +182,9 @@
   "notice": "",
   "sourceStatus": "available",
   "lastBatch": {
-    "attemptedAt": "2026-10-25T11:58:14.098Z",
+    "attemptedAt": "2026-10-25T12:23:57.448Z",
     "packageVersionsProcessed": 0,
-    "packageVersionsSkipped": 1200,
+    "packageVersionsSkipped": 1197,
     "resultRefreshProcessed": 0,
     "resultRefreshComplete": true,
     "resultRefreshRemaining": 0,
