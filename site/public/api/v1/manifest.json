@@ -1,9 +1,9 @@
 {
   "schemaVersion": "1.1",
   "status": "ready",
-  "generatedAt": "2026-10-25T16:17:48.774Z",
-  "lastAttemptAt": "2026-10-25T16:17:18.412Z",
-  "lastSuccessfulScan": "2026-10-25T16:17:18.412Z",
+  "generatedAt": "2026-10-25T19:07:06.022Z",
+  "lastAttemptAt": "2026-10-25T19:06:40.067Z",
+  "lastSuccessfulScan": "2026-10-25T19:06:40.067Z",
   "galleryUpdatedThrough": "2026-10-24T11:40:01.07",
   "advisoriesUpdatedAt": null,
   "bootstrap": {
@@ -12,7 +12,7 @@
     "startedAt": "2026-10-24T07:55:34.501Z"
   },
   "reconciliation": {
-    "afterId": "BuildHelpers"
+    "afterId": "Celerium.DattoRMM"
   },
   "resultRefresh": {
     "id": "binary-dependency-2026-10",
@@ -37,10 +37,10 @@
   "coverage": {
     "listedPackages": 16896,
     "scannedLatestVersions": 16896,
-    "scannedVersions": 18115,
+    "scannedVersions": 18117,
     "incompleteVersions": 461,
     "unscannedLatestVersions": 0,
-    "notScannedVersions": 622758,
+    "notScannedVersions": 622757,
     "binaryFiles": 75558,
     "binaryFilesChecked": 75499,
     "binaryFilesPending": 59,
@@ -182,9 +182,9 @@
   "notice": "",
   "sourceStatus": "available",
   "lastBatch": {
-    "attemptedAt": "2026-10-25T16:17:18.412Z",
+    "attemptedAt": "2026-10-25T19:06:40.067Z",
     "packageVersionsProcessed": 2,
-    "packageVersionsSkipped": 1190,
+    "packageVersionsSkipped": 1196,
     "resultRefreshProcessed": 0,
     "resultRefreshComplete": true,
     "resultRefreshRemaining": 0,
