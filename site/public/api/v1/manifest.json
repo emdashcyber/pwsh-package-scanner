@@ -1,10 +1,10 @@
 {
   "schemaVersion": "1.1",
   "status": "ready",
-  "generatedAt": "2026-10-24T23:12:28.302Z",
-  "lastAttemptAt": "2026-10-24T22:49:11.324Z",
-  "lastSuccessfulScan": "2026-10-24T22:49:11.324Z",
-  "galleryUpdatedThrough": "2026-10-24T10:00:01.497",
+  "generatedAt": "2026-10-25T01:38:33.688Z",
+  "lastAttemptAt": "2026-10-25T01:10:15.145Z",
+  "lastSuccessfulScan": "2026-10-25T01:10:15.145Z",
+  "galleryUpdatedThrough": "2026-10-24T10:40:01.003",
   "advisoriesUpdatedAt": null,
   "bootstrap": {
     "complete": true,
@@ -12,27 +12,27 @@
     "startedAt": "2026-10-24T07:55:34.501Z"
   },
   "reconciliation": {
-    "afterId": "ArielAuxFn"
+    "afterId": "AutopilotHealthCheck"
   },
   "resultRefresh": {
     "id": "binary-dependency-2026-10",
     "complete": false,
-    "afterKey": "addsactiveaccountaudit@1.2.0",
-    "total": 17834
+    "afterKey": "akamai.gtm@3.1.0",
+    "total": 17894
   },
   "freshnessWindowHours": 6,
   "coverage": {
-    "listedPackages": 16895,
-    "scannedLatestVersions": 16895,
-    "scannedVersions": 17894,
-    "incompleteVersions": 5299,
+    "listedPackages": 16896,
+    "scannedLatestVersions": 16896,
+    "scannedVersions": 17988,
+    "incompleteVersions": 5186,
     "unscannedLatestVersions": 0,
-    "notScannedVersions": 622906,
-    "binaryFiles": 59044,
-    "binaryFilesChecked": 3483,
-    "binaryFilesPending": 55561,
+    "notScannedVersions": 622872,
+    "binaryFiles": 60186,
+    "binaryFilesChecked": 8816,
+    "binaryFilesPending": 51370,
     "binaryScanErrors": 0,
-    "missingGalleryDependencies": 515
+    "missingGalleryDependencies": 539
   },
   "shards": [
     "shards/00.json",
@@ -169,12 +169,12 @@
   "notice": "",
   "sourceStatus": "available",
   "lastBatch": {
-    "attemptedAt": "2026-10-24T22:49:11.324Z",
-    "packageVersionsProcessed": 1399,
+    "attemptedAt": "2026-10-25T01:10:15.145Z",
+    "packageVersionsProcessed": 1400,
     "packageVersionsSkipped": 0,
     "resultRefreshProcessed": 200,
     "resultRefreshComplete": false,
-    "resultRefreshRemaining": 17634,
+    "resultRefreshRemaining": 17494,
     "bootstrapComplete": true,
     "advisoryRecordsRefreshed": 0,
     "advisoryRefreshRemaining": 0
