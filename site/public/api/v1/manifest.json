@@ -1,9 +1,9 @@
 {
   "schemaVersion": "1.1",
   "status": "ready",
-  "generatedAt": "2026-10-25T04:26:32.495Z",
-  "lastAttemptAt": "2026-10-25T04:26:03.080Z",
-  "lastSuccessfulScan": "2026-10-25T04:26:03.080Z",
+  "generatedAt": "2026-10-25T05:35:19.833Z",
+  "lastAttemptAt": "2026-10-25T05:35:01.647Z",
+  "lastSuccessfulScan": "2026-10-25T05:35:01.647Z",
   "galleryUpdatedThrough": "2026-10-24T11:40:01.07",
   "advisoriesUpdatedAt": null,
   "bootstrap": {
@@ -12,7 +12,7 @@
     "startedAt": "2026-10-24T07:55:34.501Z"
   },
   "reconciliation": {
-    "afterId": "Az.Blueprint"
+    "afterId": "Az.Support"
   },
   "resultRefresh": {
     "id": "binary-dependency-2026-10",
@@ -182,9 +182,9 @@
   "notice": "",
   "sourceStatus": "available",
   "lastBatch": {
-    "attemptedAt": "2026-10-25T04:26:03.080Z",
-    "packageVersionsProcessed": 1,
-    "packageVersionsSkipped": 1199,
+    "attemptedAt": "2026-10-25T05:35:01.647Z",
+    "packageVersionsProcessed": 0,
+    "packageVersionsSkipped": 1200,
     "resultRefreshProcessed": 0,
     "resultRefreshComplete": true,
     "resultRefreshRemaining": 0,
