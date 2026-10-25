@@ -1,10 +1,10 @@
 {
   "schemaVersion": "1.1",
   "status": "ready",
-  "generatedAt": "2026-10-25T02:09:07.935Z",
-  "lastAttemptAt": "2026-10-25T01:43:02.947Z",
-  "lastSuccessfulScan": "2026-10-25T01:43:02.947Z",
-  "galleryUpdatedThrough": "2026-10-24T11:00:01.307",
+  "generatedAt": "2026-10-25T03:52:35.813Z",
+  "lastAttemptAt": "2026-10-25T03:48:53.946Z",
+  "lastSuccessfulScan": "2026-10-25T03:48:53.946Z",
+  "galleryUpdatedThrough": "2026-10-24T11:40:01.07",
   "advisoriesUpdatedAt": null,
   "bootstrap": {
     "complete": true,
@@ -12,27 +12,27 @@
     "startedAt": "2026-10-24T07:55:34.501Z"
   },
   "reconciliation": {
-    "afterId": "AWS.Tools.DirectoryServiceData"
+    "afterId": "AWS.Tools.Pricing"
   },
   "resultRefresh": {
     "id": "binary-dependency-2026-10",
-    "complete": false,
-    "afterKey": "arcus.scripting.logicapps@1.6.0",
-    "total": 17988
+    "complete": true,
+    "afterKey": "",
+    "total": 0
   },
   "freshnessWindowHours": 6,
   "coverage": {
     "listedPackages": 16896,
     "scannedLatestVersions": 16896,
-    "scannedVersions": 18024,
-    "incompleteVersions": 4869,
+    "scannedVersions": 18111,
+    "incompleteVersions": 4889,
     "unscannedLatestVersions": 0,
-    "notScannedVersions": 622836,
-    "binaryFiles": 60616,
-    "binaryFilesChecked": 13587,
-    "binaryFilesPending": 47029,
+    "notScannedVersions": 622761,
+    "binaryFiles": 61076,
+    "binaryFilesChecked": 14036,
+    "binaryFilesPending": 47040,
     "binaryScanErrors": 0,
-    "missingGalleryDependencies": 567
+    "missingGalleryDependencies": 577
   },
   "shards": [
     "shards/00.json",
@@ -166,18 +166,18 @@
     "state/62.json.gz",
     "state/63.json.gz"
   ],
-  "notice": "The daily advisory refresh is in progress. Previously published findings remain available.",
+  "notice": "",
   "sourceStatus": "available",
   "lastBatch": {
-    "attemptedAt": "2026-10-25T01:43:02.947Z",
-    "packageVersionsProcessed": 1400,
-    "packageVersionsSkipped": 0,
-    "resultRefreshProcessed": 200,
-    "resultRefreshComplete": false,
-    "resultRefreshRemaining": 17388,
+    "attemptedAt": "2026-10-25T03:48:53.946Z",
+    "packageVersionsProcessed": 87,
+    "packageVersionsSkipped": 1113,
+    "resultRefreshProcessed": 0,
+    "resultRefreshComplete": true,
+    "resultRefreshRemaining": 0,
     "bootstrapComplete": true,
-    "advisoryRecordsRefreshed": 500,
-    "advisoryRefreshRemaining": 17404
+    "advisoryRecordsRefreshed": 0,
+    "advisoryRefreshRemaining": 0
   },
   "advisoryRefreshCursor": "anypackage.homebrew@0.0.1"
 }
