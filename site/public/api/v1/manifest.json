@@ -1,9 +1,9 @@
 {
   "schemaVersion": "1.1",
   "status": "ready",
-  "generatedAt": "2026-10-25T04:12:51.094Z",
-  "lastAttemptAt": "2026-10-25T03:48:53.946Z",
-  "lastSuccessfulScan": "2026-10-25T03:48:53.946Z",
+  "generatedAt": "2026-10-25T04:26:32.495Z",
+  "lastAttemptAt": "2026-10-25T04:26:03.080Z",
+  "lastSuccessfulScan": "2026-10-25T04:26:03.080Z",
   "galleryUpdatedThrough": "2026-10-24T11:40:01.07",
   "advisoriesUpdatedAt": null,
   "bootstrap": {
@@ -12,7 +12,7 @@
     "startedAt": "2026-10-24T07:55:34.501Z"
   },
   "reconciliation": {
-    "afterId": "AWS.Tools.Pricing"
+    "afterId": "Az.Blueprint"
   },
   "resultRefresh": {
     "id": "binary-dependency-2026-10",
@@ -24,15 +24,15 @@
   "coverage": {
     "listedPackages": 16896,
     "scannedLatestVersions": 16896,
-    "scannedVersions": 18111,
+    "scannedVersions": 18112,
     "incompleteVersions": 4889,
     "unscannedLatestVersions": 0,
-    "notScannedVersions": 622761,
-    "binaryFiles": 61076,
-    "binaryFilesChecked": 14036,
+    "notScannedVersions": 622760,
+    "binaryFiles": 61083,
+    "binaryFilesChecked": 14043,
     "binaryFilesPending": 47040,
     "binaryScanErrors": 0,
-    "missingGalleryDependencies": 577
+    "missingGalleryDependencies": 579
   },
   "shards": [
     "shards/00.json",
@@ -166,12 +166,12 @@
     "state/62.json.gz",
     "state/63.json.gz"
   ],
-  "notice": "Some package results are incomplete; review per-version coverage details.",
+  "notice": "",
   "sourceStatus": "available",
   "lastBatch": {
-    "attemptedAt": "2026-10-25T03:48:53.946Z",
-    "packageVersionsProcessed": 87,
-    "packageVersionsSkipped": 1113,
+    "attemptedAt": "2026-10-25T04:26:03.080Z",
+    "packageVersionsProcessed": 1,
+    "packageVersionsSkipped": 1199,
     "resultRefreshProcessed": 0,
     "resultRefreshComplete": true,
     "resultRefreshRemaining": 0,
