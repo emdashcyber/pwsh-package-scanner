@@ -8,11 +8,19 @@ const DEFAULT_BOOTSTRAP_BATCH = 200;
 const DEFAULT_RECONCILE_BATCH = 200;
 const DEFAULT_UPDATE_BATCH = 1000;
 const DEFAULT_ADVISORY_BATCH = 500;
-const DEFAULT_RESULT_REFRESH_BATCH = 200;
 const UPDATE_OVERLAP_MS = 6 * 60 * 60 * 1000;
+const INCOMPLETE_RETRY_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 function packageVersionKey(record, version) {
   return normalizePackageName(record.name) + '@' + version;
+}
+
+function parseGalleryTimestamp(value) {
+  const text = String(value || '');
+  const normalized = /^\d{4}-\d{2}-\d{2}T/.test(text) && !/(?:z|[+-]\d{2}:?\d{2})$/i.test(text)
+    ? text + 'Z'
+    : text;
+  return Date.parse(normalized);
 }
 
 function selectedLatest(record) {
@@ -21,13 +29,16 @@ function selectedLatest(record) {
     || null;
 }
 
-function shouldRescan(item, state) {
+function shouldRescan(item, state, attemptedAt) {
   const existing = findVersionRecord(state, item.name, item.version);
-  if (!existing || existing.assessment === 'not_scanned') return true;
-  if (existing.assessment === 'incomplete' && !existing.scannedAt) return true;
-  const changedAt = Date.parse(item.updatedAt || item.publishedAt || '');
-  const scannedMetaAt = Date.parse(existing.metadata?.updatedAt || '');
-  return Number.isFinite(changedAt) && Number.isFinite(scannedMetaAt) && changedAt > scannedMetaAt;
+  if (!existing || !existing.assessment || existing.assessment === 'not_scanned') return true;
+  if (existing.assessment !== 'incomplete') return false;
+  const publishedAt = parseGalleryTimestamp(item.publishedAt || existing.metadata?.publishedAt);
+  const currentAt = parseGalleryTimestamp(attemptedAt);
+  return Number.isFinite(publishedAt)
+    && Number.isFinite(currentAt)
+    && publishedAt <= currentAt
+    && currentAt - publishedAt <= INCOMPLETE_RETRY_WINDOW_MS;
 }
 
 function updateFeedCursor(state, items, queryLimit, attemptedAt) {
@@ -56,7 +67,6 @@ export async function runScanCycle({
   reconcileBatchSize = DEFAULT_RECONCILE_BATCH,
   updateBatchSize = DEFAULT_UPDATE_BATCH,
   advisoryBatchSize = DEFAULT_ADVISORY_BATCH,
-  resultRefreshBatchSize = DEFAULT_RESULT_REFRESH_BATCH,
   concurrency = 4,
   curatedAdvisories,
   log = () => {},
@@ -151,48 +161,16 @@ export async function runScanCycle({
   gallery.clearVersionCache?.();
   if (laterVersions.length) processItems(laterVersions, 'post_launch_versions');
 
-  const refresh = state.manifest.resultRefresh || {
-    id: 'binary-dependency-2026-10', complete: false, afterKey: '', total: 0,
-  };
+  const refresh = state.manifest.resultRefresh || { id: 'binary-dependency-2026-10' };
+  refresh.complete = true;
+  refresh.afterKey = '';
+  refresh.total = 0;
   state.manifest.resultRefresh = refresh;
-  const refreshable = [];
-  for (const packageRecord of state.packages.values()) {
-    for (const version of packageRecord.versions || []) {
-      if (version.assessment === 'not_scanned') continue;
-      const key = packageVersionKey(packageRecord, version.version);
-      refreshable.push({ key, packageRecord, version });
-    }
-  }
-  refreshable.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
-  if (!Number.isFinite(refresh.total) || refresh.total < refreshable.length) refresh.total = refreshable.length;
-  const refreshBatch = refresh.complete ? [] : refreshable
-    .filter((item) => item.key > (refresh.afterKey || ''))
-    .slice(0, Math.max(1, resultRefreshBatchSize));
-  const refreshKeys = new Set();
-  for (const entry of refreshBatch) {
-    refreshKeys.add(entry.key);
-    if (!work.has(entry.key)) {
-      const { packageRecord, version } = entry;
-      work.set(entry.key, {
-        name: packageRecord.name,
-        version: version.version,
-        title: version.metadata?.title || packageRecord.metadata?.title || packageRecord.name,
-        description: version.metadata?.description || packageRecord.metadata?.description || '',
-        owners: version.metadata?.owners || packageRecord.metadata?.owners || '',
-        authors: version.metadata?.authors || packageRecord.metadata?.authors || '',
-        projectUrl: version.metadata?.projectUrl || packageRecord.metadata?.projectUrl || '',
-        tags: version.metadata?.tags || packageRecord.metadata?.tags || [],
-        publishedAt: version.metadata?.publishedAt || null,
-        updatedAt: version.metadata?.updatedAt || null,
-        dependencies: [],
-      });
-    }
-  }
 
   const candidates = [...work.entries()].map(([key, item]) => ({ key, item }));
   const processed = await mapLimit(candidates, concurrency, async (item) => {
     const { key, item: packageItem } = item;
-    if (!refreshKeys.has(key) && !shouldRescan(packageItem, state)) return { item: packageItem, key, skipped: true };
+    if (!shouldRescan(packageItem, state, attemptedAt)) return { item: packageItem, key, skipped: true };
     const existing = findPackageRecord(state, packageItem.name);
     try {
       const result = await scanGalleryPackage(packageItem, gallery, {
@@ -236,19 +214,6 @@ export async function runScanCycle({
   gallery.clearVersionCache?.();
 
   const changed = processed.filter((entry) => !entry.skipped).length;
-  let refreshAdvanced = 0;
-  if (!refresh.complete && refreshBatch.length) {
-    for (const entry of refreshBatch) {
-      const outcome = processed.find((item) => item.key === entry.key);
-      if (!outcome || outcome.skipped) break;
-      refresh.afterKey = entry.key;
-      refreshAdvanced++;
-    }
-    if (refreshAdvanced === refreshBatch.length
-      && refreshable.filter((item) => item.key > refresh.afterKey).length === 0) refresh.complete = true;
-  } else if (!refresh.complete && !refreshBatch.length) {
-    refresh.complete = true;
-  }
 
   let advisoryRefresh = { processed: 0, complete: !refreshAdvisories, remaining: 0 };
   if (refreshAdvisories) {
@@ -279,9 +244,9 @@ export async function runScanCycle({
     attemptedAt,
     packageVersionsProcessed: changed,
     packageVersionsSkipped: processed.length - changed,
-    resultRefreshProcessed: refreshAdvanced,
+    resultRefreshProcessed: 0,
     resultRefreshComplete: Boolean(refresh.complete),
-    resultRefreshRemaining: Math.max(0, refresh.total - refreshable.filter((item) => item.key <= (refresh.afterKey || '')).length),
+    resultRefreshRemaining: 0,
     bootstrapComplete: Boolean(state.manifest.bootstrap.complete),
     advisoryRecordsRefreshed: advisoryRefresh.processed,
     advisoryRefreshRemaining: advisoryRefresh.remaining,

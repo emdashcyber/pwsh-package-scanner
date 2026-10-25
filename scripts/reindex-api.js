@@ -1,7 +1,6 @@
 import { loadLocalState, SITE_PUBLIC_DIRECTORY, writeSnapshot } from '../scanner/state.js';
 
 const state = await loadLocalState(SITE_PUBLIC_DIRECTORY);
-let refreshRecords = 0;
 let binaryPending = 0;
 for (const record of state.packages.values()) {
   for (const version of record.versions || []) {
@@ -33,16 +32,15 @@ for (const record of state.packages.values()) {
       version.coverage.binaryScanning = false;
       version.coverage.executableBinaries = 'incomplete';
     }
-    refreshRecords++;
   }
 }
 
 state.manifest.freshnessWindowHours = 6;
 state.manifest.resultRefresh = {
   id: 'binary-dependency-2026-10',
-  complete: refreshRecords === 0,
+  complete: true,
   afterKey: '',
-  total: refreshRecords,
+  total: 0,
 };
 if (state.manifest.sourceStatus === 'available' && state.manifest.lastSuccessfulScan) {
   state.manifest.status = 'ready';

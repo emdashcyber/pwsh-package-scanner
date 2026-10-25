@@ -111,10 +111,21 @@ test('upstream failures leave the last successful timestamp and package data int
 test('package-level incomplete checks do not degrade service health and failed first scans retry', async () => {
   const state = emptyState();
   state.manifest.bootstrap = { complete: true, afterId: '', startedAt: null };
+  const recentPublishedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const recentItem = { ...item, publishedAt: recentPublishedAt, updatedAt: recentPublishedAt };
+  const oldIncomplete = {
+    ...item,
+    name: 'OldExample',
+    version: '0.9.0',
+    publishedAt: '2026-10-10T00:00:00Z',
+    updatedAt: '2026-10-10T00:00:00Z',
+    isAbsoluteLatest: false,
+  };
+  mergePackageVersion(state, oldIncomplete, snapshot(oldIncomplete, { assessment: 'incomplete', scannedAt: null }));
   const outcome = await runScanCycle({
     state,
     gallery: {
-      listUpdatedSince: async () => [item],
+      listUpdatedSince: async () => [recentItem],
       listLatestAfter: async () => [],
       downloadPackage: async () => { throw new Error('Package endpoint timed out'); },
     },
@@ -123,13 +134,17 @@ test('package-level incomplete checks do not degrade service health and failed f
   assert.equal(outcome.feedSucceeded, true);
   assert.equal(state.manifest.status, 'ready');
   assert.equal(state.manifest.sourceStatus, 'available');
-  assert.equal(buildCoverage(state).incompleteVersions, 1);
+  assert.equal(buildCoverage(state).incompleteVersions, 2);
+  const downloads = [];
   const recovered = await runScanCycle({
     state,
     gallery: {
-      listUpdatedSince: async () => [item],
+      listUpdatedSince: async () => [recentItem, oldIncomplete],
       listLatestAfter: async () => [],
-      downloadPackage: async () => createZip(packageEntries()),
+      downloadPackage: async (_name, version) => {
+        downloads.push(version);
+        return createZip(packageEntries());
+      },
       resolveDependencyGraph: async () => ({ dependencies: [], complete: true }),
     },
     fetcher: async (url, options) => String(url).endsWith('/querybatch')
@@ -138,11 +153,19 @@ test('package-level incomplete checks do not degrade service health and failed f
     runPssa: false,
   });
   assert.equal(recovered.state.packages.get('example').versions[0].assessment, 'complete');
+  assert.deepEqual(downloads, ['1.0.0']);
+  assert.equal(recovered.state.packages.get('oldexample').versions[0].assessment, 'incomplete');
 });
 
-test('existing-result refresh advances across saved batches and marks completion only at the end', async () => {
+test('the legacy result refresh cursor closes without rescanning completed versions', async () => {
   const state = emptyState();
   state.manifest.bootstrap = { complete: true, afterId: '', startedAt: null };
+  state.manifest.resultRefresh = {
+    id: 'binary-dependency-2026-10',
+    complete: false,
+    afterKey: 'addsactiveaccountaudit@1.2.0',
+    total: 17834,
+  };
   const older = { ...item, version: '0.9.0', isAbsoluteLatest: false };
   mergePackageVersion(state, item, snapshot());
   mergePackageVersion(state, older, snapshot(older));
@@ -157,37 +180,39 @@ test('existing-result refresh advances across saved batches and marks completion
   const fetcher = async (url, options) => String(url).endsWith('/querybatch')
     ? Response.json({ results: JSON.parse(options.body).queries.map(() => ({ vulns: [] })) })
     : new Response('unexpected', { status: 404 });
-  const first = await runScanCycle({ state, gallery, fetcher, runPssa: false, resultRefreshBatchSize: 1 });
-  assert.equal(first.state.manifest.resultRefresh.complete, false);
-  assert.equal(first.state.manifest.lastBatch.resultRefreshProcessed, 1);
-  const firstCursor = first.state.manifest.resultRefresh.afterKey;
-  assert.ok(firstCursor);
-  const second = await runScanCycle({ state, gallery, fetcher, runPssa: false, resultRefreshBatchSize: 1 });
-  assert.equal(second.state.manifest.resultRefresh.complete, true);
-  assert.notEqual(second.state.manifest.resultRefresh.afterKey, firstCursor);
-  assert.equal(downloads, 2);
+  const outcome = await runScanCycle({ state, gallery, fetcher, runPssa: false });
+  assert.equal(outcome.state.manifest.resultRefresh.complete, true);
+  assert.equal(outcome.state.manifest.resultRefresh.afterKey, '');
+  assert.equal(outcome.state.manifest.resultRefresh.total, 0);
+  assert.equal(outcome.state.manifest.lastBatch.resultRefreshProcessed, 0);
+  assert.equal(downloads, 0);
 });
 
-test('a failed rescan preserves the last-good result for an existing package version', async () => {
+test('Gallery update metadata changes do not rescan completed package versions', async () => {
   const state = emptyState();
   state.manifest.status = 'ready';
   state.manifest.bootstrap = { complete: true, afterId: '', startedAt: null };
   state.manifest.galleryUpdatedThrough = '2026-10-01T00:00:00Z';
   mergePackageVersion(state, item, snapshot({ ...item, updatedAt: '2026-10-01T00:00:00Z' }));
   const updated = { ...item, updatedAt: '2026-10-10T00:00:00Z' };
+  let downloads = 0;
   await runScanCycle({
     state,
     gallery: {
       listUpdatedSince: async () => [updated],
       listLatestAfter: async () => [],
-      downloadPackage: async () => { throw new Error('Temporary package download failure'); },
+      downloadPackage: async () => {
+        downloads++;
+        throw new Error('Completed versions should not be downloaded again.');
+      },
     },
   });
   const version = state.packages.get('example').versions[0];
   assert.equal(version.assessment, 'complete');
   assert.equal(version.packageSha256, 'a'.repeat(64));
   assert.equal(version.scannedAt, '2026-10-10T00:00:00Z');
-  assert.match(version.lastAttemptError, /download failure/);
+  assert.equal(version.metadata.updatedAt, updated.updatedAt);
+  assert.equal(downloads, 0);
 });
 
 test('advisory refresh cursor does not skip records after OSV failures', async () => {

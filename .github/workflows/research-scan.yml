@@ -100,7 +100,6 @@ jobs:
         env:
           REFRESH_ADVISORIES: ${{ github.event.schedule == '43 23 * * *' || inputs.refresh_advisories }}
           CLAMAV_SCAN_COMMAND: clamdscan
-          RESULT_REFRESH_BATCH_SIZE: 200
         run: npm run scan
       - name: Validate generated API snapshot
         run: node scripts/validate-api-snapshot.js site/public/api/v1

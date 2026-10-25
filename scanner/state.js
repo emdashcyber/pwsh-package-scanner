@@ -21,7 +21,7 @@ const DEFAULT_MANIFEST = {
   advisoriesUpdatedAt: null,
   bootstrap: { complete: false, afterId: '', startedAt: null },
   reconciliation: { afterId: '' },
-  resultRefresh: { id: 'binary-dependency-2026-10', complete: false, afterKey: '' },
+  resultRefresh: { id: 'binary-dependency-2026-10', complete: true, afterKey: '', total: 0 },
   freshnessWindowHours: 6,
   coverage: {
     listedPackages: 0,
@@ -146,6 +146,16 @@ export function mergePackageMetadata(state, item) {
     tags: item.tags || record.metadata.tags || [],
     updatedAt: item.updatedAt || record.metadata.updatedAt || null,
   };
+  if (item.version) {
+    const version = record.versions.find((entry) => entry.version === item.version);
+    if (version) {
+      version.metadata = {
+        ...(version.metadata || {}),
+        publishedAt: item.publishedAt || version.metadata?.publishedAt || null,
+        updatedAt: item.updatedAt || item.publishedAt || version.metadata?.updatedAt || null,
+      };
+    }
+  }
   if (item.isAbsoluteLatest || item.isLatest || !record.latestVersion) record.latestVersion = item.version;
 }
 

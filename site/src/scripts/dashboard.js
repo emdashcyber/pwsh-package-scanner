@@ -6,6 +6,12 @@ const apiBase = new URL(base + 'api/v1/', window.location.origin);
 const pageSize = 24;
 const severityOrder = ['critical', 'high', 'medium', 'low', 'info'];
 const state = { packages: [], filtered: [], page: 0, manifest: null };
+const galleryDateFormatter = new Intl.DateTimeFormat('en-AU', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
 const dateFormatter = new Intl.DateTimeFormat('en-AU', {
   year: 'numeric',
   month: 'short',
@@ -45,6 +51,25 @@ function fmtDate(value) {
   if (!value) return 'not available';
   const date = new Date(value);
   return Number.isNaN(date.valueOf()) ? 'not available' : dateFormatter.format(date);
+}
+
+function parseGalleryDate(value) {
+  if (!value) return null;
+  const text = String(value);
+  const normalized = /^\d{4}-\d{2}-\d{2}T/.test(text) && !/(?:z|[+-]\d{2}:?\d{2})$/i.test(text)
+    ? text + 'Z'
+    : text;
+  const date = new Date(normalized);
+  return Number.isNaN(date.valueOf()) ? null : date;
+}
+
+function fmtGalleryDate(value) {
+  const date = parseGalleryDate(value);
+  return date ? galleryDateFormatter.format(date) : 'not available';
+}
+
+function latestVersionUpdatedAt(entry) {
+  return (entry.versions || []).find((item) => item.version === entry.latestVersion)?.updatedAt || null;
 }
 
 function setMessage(title, body, kind = 'info') {
@@ -87,11 +112,6 @@ function updateFreshness(manifest) {
     ui.statusCopy.textContent = 'No successful scan has arrived within the expected ' + freshnessWindowHours + '-hour window. Existing results remain available.';
   } else {
     ui.statusCopy.textContent = 'A successful scan completed within the last ' + freshnessWindowHours + ' hours. Package coverage gaps are reported separately.';
-  }
-  if (manifest.resultRefresh?.complete === false && !baselineInProgress) {
-    const total = Number(manifest.resultRefresh.total || 0);
-    const remaining = Number(manifest.lastBatch?.resultRefreshRemaining ?? total);
-    if (total) ui.statusCopy.textContent += ' Earlier results are being refreshed: ' + Math.max(0, total - remaining).toLocaleString('en-AU') + ' of ' + total.toLocaleString('en-AU') + '.';
   }
   ui.updated.textContent = 'Last successful scan: ' + fmtDate(lastSuccess)
     + (manifest.lastAttemptAt ? ' · Last attempt: ' + fmtDate(manifest.lastAttemptAt) : '');
@@ -426,6 +446,9 @@ function renderPackage(entry) {
   const scannedAt = document.createElement('p');
   scannedAt.className = 'package-scan-date';
   scannedAt.textContent = 'Latest scan: ' + fmtDate(entry.latestScannedAt);
+  const updatedAt = document.createElement('p');
+  updatedAt.className = 'package-scan-date';
+  updatedAt.textContent = 'Last updated: ' + fmtGalleryDate(latestVersionUpdatedAt(entry));
   const matched = document.createElement('p');
   matched.className = 'package-matching-versions';
   if (entry.matchingVersions?.length) {
@@ -452,7 +475,7 @@ function renderPackage(entry) {
       loadDetails(entry, details, entry.matchingVersions?.[0]?.version || entry.latestVersion);
     }
   });
-  summary.append(titleWrap, meta, description, scannedAt);
+  summary.append(titleWrap, meta, description, updatedAt, scannedAt);
   if (matched.textContent) summary.append(matched);
   summary.append(toggle);
   card.append(summary, details);
@@ -486,8 +509,15 @@ function applyFilters() {
       - Number(a.totalFindingCount || (a.versions || []).reduce((sum, item) => sum + Number(item.findingCount || 0), 0));
     return count || String(a.name).localeCompare(String(b.name), 'en', { sensitivity: 'base' });
   });
-  else matched.sort((a, b) => (Date.parse(b.latestScannedAt || '') || 0) - (Date.parse(a.latestScannedAt || '') || 0)
-    || String(a.name).localeCompare(String(b.name), 'en', { sensitivity: 'base' }));
+  else matched.sort((a, b) => {
+    const aUpdatedAt = parseGalleryDate(latestVersionUpdatedAt(a))?.valueOf() ?? null;
+    const bUpdatedAt = parseGalleryDate(latestVersionUpdatedAt(b))?.valueOf() ?? null;
+    const aHasDate = aUpdatedAt !== null;
+    const bHasDate = bUpdatedAt !== null;
+    if (aHasDate !== bHasDate) return aHasDate ? -1 : 1;
+    if (aHasDate && aUpdatedAt !== bUpdatedAt) return bUpdatedAt - aUpdatedAt;
+    return String(a.name).localeCompare(String(b.name), 'en', { sensitivity: 'base' });
+  });
   state.filtered = matched;
   state.page = 0;
   renderPage();
