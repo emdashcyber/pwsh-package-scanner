@@ -24,26 +24,35 @@ test('valid nupkg is inspected without executing the PowerShell payload', async 
   await assert.rejects(access(marker));
 });
 
-test('adjacent complete package versions report changed files with stable evidence', async () => {
-  const packageBytes = createZip(packageEntries());
+test('supply-chain IDs stay canonical while per-file evidence remains distinct', async () => {
+  const packageBytes = createZip([
+    ...packageEntries(),
+    { name: 'tools/Extra.ps1', content: 'Write-Output "extra"' },
+    { name: 'tools/New.dll', content: Buffer.from([1, 2, 3]) },
+  ]);
   const result = await scanGalleryPackage({ name: 'Example', version: '1.0.0', owners: 'owner', packageUrl: 'https://www.powershellgallery.com/packages/Example/1.0.0' }, {
     downloadPackage: async () => packageBytes,
     resolveDependencyGraph: async () => ({ dependencies: [], complete: true }),
   }, {
     runPssa: false,
     scanAdvisories: false,
+    clamavScanner: async () => ({ status: 'error' }),
     previousVersions: [{
       version: '0.9.0',
       assessment: 'complete',
       metadata: { owners: 'owner' },
       dependencies: [],
-      fileInventory: [{ path: 'tools/Example.ps1', size: 1, crc32: '00000000' }],
+      fileInventory: [
+        { path: 'tools/Example.ps1', size: 1, crc32: '00000000' },
+        { path: 'tools/Extra.ps1', size: 1, crc32: '00000000' },
+      ],
     }],
   });
-  const changed = result.findings.find((finding) => finding.id.startsWith('PSG-SUPPLY-004-'));
-  assert.ok(changed);
-  assert.equal(changed.confidence, 'high');
-  assert.equal(changed.evidence.file, 'tools/Example.ps1');
+  const changed = result.findings.filter((finding) => finding.id === 'PSG-SUPPLY-004');
+  assert.equal(changed.length, 2);
+  assert.deepEqual(changed.map((finding) => finding.evidence.file).sort(), ['tools/Example.ps1', 'tools/Extra.ps1']);
+  assert.ok(changed.every((finding) => finding.confidence === 'high'));
+  assert.ok(result.findings.some((finding) => finding.id === 'PSG-SUPPLY-002' && finding.evidence.file === 'tools/New.dll'));
 });
 
 test('corrupt and oversized packages do not get complete assessments', () => {

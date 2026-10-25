@@ -88,12 +88,16 @@ test('OSV fixed-version ranges match affected NuGet identities and carry high co
     throw new Error('Unexpected URL ' + url);
   };
   const result = await scanAdvisoriesForVersion({ package: 'Example', version: '1.5.0' }, [], {
-    resolveDependencyGraph: async () => ({ dependencies: [], complete: true }),
+    resolveDependencyGraph: async () => ({
+      dependencies: [{ name: 'Example', resolvedVersion: '1.8.0', status: 'resolved', depth: 1 }],
+      complete: true,
+    }),
   }, { fetcher });
   assert.equal(result.complete, true);
-  assert.equal(result.findings.length, 1);
-  assert.equal(result.findings[0].confidence, 'high');
-  assert.equal(result.findings[0].advisoryId, advisory.id);
+  assert.equal(result.findings.length, 2);
+  assert.ok(result.findings.every((finding) => finding.id === 'ADVISORY-GHSA-example'));
+  assert.deepEqual(result.findings.map((finding) => finding.affectedVersion).sort(), ['1.5.0', '1.8.0']);
+  assert.ok(result.findings.every((finding) => finding.confidence === 'high' && finding.advisoryId === advisory.id));
 });
 
 test('OSV service failures mark advisory coverage incomplete', async () => {

@@ -68,7 +68,7 @@ function compareVersionChanges(item, current, previous) {
   const addedBinaries = currentFiles.filter((file) => /\.(?:dll|exe|msi|com|sys|bin|scr|so|dylib)$/i.test(file.path) && !previousFiles.has(file.path));
   for (const file of addedBinaries.slice(0, 10)) {
     findings.push({
-      id: 'PSG-SUPPLY-002-' + sha256(file.path).slice(0, 12),
+      id: 'PSG-SUPPLY-002',
       category: 'supply_chain',
       severity: 'medium',
       confidence: 'medium',
@@ -83,7 +83,7 @@ function compareVersionChanges(item, current, previous) {
     && (previousFiles.get(entry.path).size !== entry.size || previousFiles.get(entry.path).crc32 !== entry.crc32)).slice(0, 20)) {
     const before = previousFiles.get(file.path);
     findings.push({
-      id: 'PSG-SUPPLY-004-' + sha256(file.path).slice(0, 12),
+      id: 'PSG-SUPPLY-004',
       category: 'supply_chain',
       severity: 'low',
       confidence: 'high',
@@ -119,7 +119,10 @@ function compareVersionChanges(item, current, previous) {
 function dedupeFindings(items) {
   const seen = new Set();
   return items.map(redactFinding).filter((finding) => {
-    const key = finding.id + '|' + (finding.evidence?.file || '') + '|' + (finding.evidence?.line || '');
+    const affectedTarget = finding.category === 'advisory'
+      ? '|' + normalizePackageName(finding.affectedPackage || '') + '@' + (finding.affectedVersion || '')
+      : '';
+    const key = finding.id + '|' + (finding.evidence?.file || '') + '|' + (finding.evidence?.line || '') + affectedTarget;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

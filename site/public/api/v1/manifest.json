@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.1",
   "status": "ready",
-  "generatedAt": "2026-10-25T03:52:35.813Z",
+  "generatedAt": "2026-10-25T04:12:51.094Z",
   "lastAttemptAt": "2026-10-25T03:48:53.946Z",
   "lastSuccessfulScan": "2026-10-25T03:48:53.946Z",
   "galleryUpdatedThrough": "2026-10-24T11:40:01.07",
@@ -166,7 +166,7 @@
     "state/62.json.gz",
     "state/63.json.gz"
   ],
-  "notice": "",
+  "notice": "Some package results are incomplete; review per-version coverage details.",
   "sourceStatus": "available",
   "lastBatch": {
     "attemptedAt": "2026-10-25T03:48:53.946Z",

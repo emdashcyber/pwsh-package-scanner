@@ -78,7 +78,7 @@ function toFinding(advisory, target, source) {
     advisory.id ? 'https://osv.dev/vulnerability/' + encodeURIComponent(advisory.id) : null,
   ].filter((item) => typeof item === 'string');
   return {
-    id: 'ADVISORY-' + id + '-' + normalizePackageName(target.name) + '-' + target.version,
+    id: 'ADVISORY-' + id,
     advisoryId: id,
     category: 'advisory',
     severity: advisory.severity ? severityFromAdvisory(advisory) : (advisory.severityLabel || 'medium'),
@@ -91,6 +91,14 @@ function toFinding(advisory, target, source) {
     affectedVersion: target.version,
     source,
   };
+}
+
+function findingOccurrenceKey(finding) {
+  return [
+    finding.id,
+    normalizePackageName(finding.affectedPackage || ''),
+    finding.affectedVersion || '',
+  ].join('|');
 }
 
 async function postJson(url, body, fetcher) {
@@ -166,7 +174,7 @@ export async function scanAdvisoriesForVersion(packageVersion, declaredDependenc
   }
 
   const deduped = new Map();
-  for (const finding of findings) deduped.set(finding.id, finding);
+  for (const finding of findings) deduped.set(findingOccurrenceKey(finding), finding);
   return {
     findings: [...deduped.values()],
     dependencies: graph.dependencies,
@@ -216,7 +224,7 @@ export async function refreshOsvForTargets(packageVersion, dependencies, {
       }
     });
     return {
-      findings: [...new Map(findings.map((finding) => [finding.id, finding])).values()],
+      findings: [...new Map(findings.map((finding) => [findingOccurrenceKey(finding), finding])).values()],
       complete: true,
       checkedAt: nowIso(),
       error: null,
