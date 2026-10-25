@@ -1,9 +1,9 @@
 {
   "schemaVersion": "1.1",
   "status": "ready",
-  "generatedAt": "2026-10-25T19:07:06.022Z",
-  "lastAttemptAt": "2026-10-25T19:06:40.067Z",
-  "lastSuccessfulScan": "2026-10-25T19:06:40.067Z",
+  "generatedAt": "2026-10-25T21:48:05.662Z",
+  "lastAttemptAt": "2026-10-25T21:47:44.925Z",
+  "lastSuccessfulScan": "2026-10-25T21:47:44.925Z",
   "galleryUpdatedThrough": "2026-10-24T11:40:01.07",
   "advisoriesUpdatedAt": null,
   "bootstrap": {
@@ -12,7 +12,7 @@
     "startedAt": "2026-10-24T07:55:34.501Z"
   },
   "reconciliation": {
-    "afterId": "Celerium.DattoRMM"
+    "afterId": "CitrixWemDsc"
   },
   "resultRefresh": {
     "id": "binary-dependency-2026-10",
@@ -37,7 +37,7 @@
   "coverage": {
     "listedPackages": 16896,
     "scannedLatestVersions": 16896,
-    "scannedVersions": 18117,
+    "scannedVersions": 18118,
     "incompleteVersions": 461,
     "unscannedLatestVersions": 0,
     "notScannedVersions": 622757,
@@ -182,9 +182,9 @@
   "notice": "",
   "sourceStatus": "available",
   "lastBatch": {
-    "attemptedAt": "2026-10-25T19:06:40.067Z",
-    "packageVersionsProcessed": 2,
-    "packageVersionsSkipped": 1196,
+    "attemptedAt": "2026-10-25T21:47:44.925Z",
+    "packageVersionsProcessed": 1,
+    "packageVersionsSkipped": 1193,
     "resultRefreshProcessed": 0,
     "resultRefreshComplete": true,
     "resultRefreshRemaining": 0,
