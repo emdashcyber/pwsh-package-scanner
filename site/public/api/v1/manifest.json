@@ -1,10 +1,10 @@
 {
   "schemaVersion": "1.1",
   "status": "ready",
-  "generatedAt": "2026-10-25T01:38:33.688Z",
-  "lastAttemptAt": "2026-10-25T01:10:15.145Z",
-  "lastSuccessfulScan": "2026-10-25T01:10:15.145Z",
-  "galleryUpdatedThrough": "2026-10-24T10:40:01.003",
+  "generatedAt": "2026-10-25T02:09:07.935Z",
+  "lastAttemptAt": "2026-10-25T01:43:02.947Z",
+  "lastSuccessfulScan": "2026-10-25T01:43:02.947Z",
+  "galleryUpdatedThrough": "2026-10-24T11:00:01.307",
   "advisoriesUpdatedAt": null,
   "bootstrap": {
     "complete": true,
@@ -12,27 +12,27 @@
     "startedAt": "2026-10-24T07:55:34.501Z"
   },
   "reconciliation": {
-    "afterId": "AutopilotHealthCheck"
+    "afterId": "AWS.Tools.DirectoryServiceData"
   },
   "resultRefresh": {
     "id": "binary-dependency-2026-10",
     "complete": false,
-    "afterKey": "akamai.gtm@3.1.0",
-    "total": 17894
+    "afterKey": "arcus.scripting.logicapps@1.6.0",
+    "total": 17988
   },
   "freshnessWindowHours": 6,
   "coverage": {
     "listedPackages": 16896,
     "scannedLatestVersions": 16896,
-    "scannedVersions": 17988,
-    "incompleteVersions": 5186,
+    "scannedVersions": 18024,
+    "incompleteVersions": 4869,
     "unscannedLatestVersions": 0,
-    "notScannedVersions": 622872,
-    "binaryFiles": 60186,
-    "binaryFilesChecked": 8816,
-    "binaryFilesPending": 51370,
+    "notScannedVersions": 622836,
+    "binaryFiles": 60616,
+    "binaryFilesChecked": 13587,
+    "binaryFilesPending": 47029,
     "binaryScanErrors": 0,
-    "missingGalleryDependencies": 539
+    "missingGalleryDependencies": 567
   },
   "shards": [
     "shards/00.json",
@@ -166,17 +166,18 @@
     "state/62.json.gz",
     "state/63.json.gz"
   ],
-  "notice": "",
+  "notice": "The daily advisory refresh is in progress. Previously published findings remain available.",
   "sourceStatus": "available",
   "lastBatch": {
-    "attemptedAt": "2026-10-25T01:10:15.145Z",
+    "attemptedAt": "2026-10-25T01:43:02.947Z",
     "packageVersionsProcessed": 1400,
     "packageVersionsSkipped": 0,
     "resultRefreshProcessed": 200,
     "resultRefreshComplete": false,
-    "resultRefreshRemaining": 17494,
+    "resultRefreshRemaining": 17388,
     "bootstrapComplete": true,
-    "advisoryRecordsRefreshed": 0,
-    "advisoryRefreshRemaining": 0
-  }
+    "advisoryRecordsRefreshed": 500,
+    "advisoryRefreshRemaining": 17404
+  },
+  "advisoryRefreshCursor": "anypackage.homebrew@0.0.1"
 }
