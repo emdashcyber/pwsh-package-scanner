@@ -1,9 +1,9 @@
 {
   "schemaVersion": "1.1",
   "status": "ready",
-  "generatedAt": "2026-10-25T05:35:19.833Z",
-  "lastAttemptAt": "2026-10-25T05:35:01.647Z",
-  "lastSuccessfulScan": "2026-10-25T05:35:01.647Z",
+  "generatedAt": "2026-10-25T06:08:00.845Z",
+  "lastAttemptAt": "2026-10-25T06:07:35.923Z",
+  "lastSuccessfulScan": "2026-10-25T06:07:35.923Z",
   "galleryUpdatedThrough": "2026-10-24T11:40:01.07",
   "advisoriesUpdatedAt": null,
   "bootstrap": {
@@ -12,7 +12,7 @@
     "startedAt": "2026-10-24T07:55:34.501Z"
   },
   "reconciliation": {
-    "afterId": "Az.Support"
+    "afterId": "AzureADStuff"
   },
   "resultRefresh": {
     "id": "binary-dependency-2026-10",
@@ -37,12 +37,12 @@
   "coverage": {
     "listedPackages": 16896,
     "scannedLatestVersions": 16896,
-    "scannedVersions": 18112,
+    "scannedVersions": 18113,
     "incompleteVersions": 4889,
     "unscannedLatestVersions": 0,
     "notScannedVersions": 622760,
-    "binaryFiles": 61083,
-    "binaryFilesChecked": 14043,
+    "binaryFiles": 61092,
+    "binaryFilesChecked": 14052,
     "binaryFilesPending": 47040,
     "binaryScanErrors": 0,
     "missingGalleryDependencies": 579
@@ -182,9 +182,9 @@
   "notice": "",
   "sourceStatus": "available",
   "lastBatch": {
-    "attemptedAt": "2026-10-25T05:35:01.647Z",
-    "packageVersionsProcessed": 0,
-    "packageVersionsSkipped": 1200,
+    "attemptedAt": "2026-10-25T06:07:35.923Z",
+    "packageVersionsProcessed": 1,
+    "packageVersionsSkipped": 1198,
     "resultRefreshProcessed": 0,
     "resultRefreshComplete": true,
     "resultRefreshRemaining": 0,
