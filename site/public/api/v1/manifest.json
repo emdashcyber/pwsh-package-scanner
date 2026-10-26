@@ -1,9 +1,9 @@
 {
   "schemaVersion": "1.1",
   "status": "ready",
-  "generatedAt": "2026-10-25T21:48:05.662Z",
-  "lastAttemptAt": "2026-10-25T21:47:44.925Z",
-  "lastSuccessfulScan": "2026-10-25T21:47:44.925Z",
+  "generatedAt": "2026-10-26T00:55:20.924Z",
+  "lastAttemptAt": "2026-10-26T00:54:59.131Z",
+  "lastSuccessfulScan": "2026-10-26T00:54:59.131Z",
   "galleryUpdatedThrough": "2026-10-24T11:40:01.07",
   "advisoriesUpdatedAt": null,
   "bootstrap": {
@@ -12,7 +12,7 @@
     "startedAt": "2026-10-24T07:55:34.501Z"
   },
   "reconciliation": {
-    "afterId": "CitrixWemDsc"
+    "afterId": "CommonStuff"
   },
   "resultRefresh": {
     "id": "binary-dependency-2026-10",
@@ -32,6 +32,20 @@
     "startedAt": "2026-10-25T06:26:37.129Z",
     "updatedAt": "2026-10-25T15:27:34.778Z",
     "completedAt": "2026-10-25T15:27:34.778Z"
+  },
+  "findingsRefresh": {
+    "id": "finding-rules-0.3.0",
+    "active": false,
+    "complete": false,
+    "afterKey": "",
+    "total": 0,
+    "processed": 0,
+    "succeeded": 0,
+    "failed": 0,
+    "lastErrors": [],
+    "startedAt": null,
+    "updatedAt": null,
+    "completedAt": null
   },
   "freshnessWindowHours": 6,
   "coverage": {
@@ -182,9 +196,9 @@
   "notice": "",
   "sourceStatus": "available",
   "lastBatch": {
-    "attemptedAt": "2026-10-25T21:47:44.925Z",
-    "packageVersionsProcessed": 1,
-    "packageVersionsSkipped": 1193,
+    "attemptedAt": "2026-10-26T00:54:59.131Z",
+    "packageVersionsProcessed": 0,
+    "packageVersionsSkipped": 1199,
     "resultRefreshProcessed": 0,
     "resultRefreshComplete": true,
     "resultRefreshRemaining": 0,
