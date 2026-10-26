@@ -1,10 +1,10 @@
 {
   "schemaVersion": "1.1",
   "status": "ready",
-  "generatedAt": "2026-10-26T06:06:47.593Z",
-  "lastAttemptAt": "2026-10-26T00:54:59.131Z",
-  "lastSuccessfulScan": "2026-10-26T00:54:59.131Z",
-  "galleryUpdatedThrough": "2026-10-24T11:40:01.07",
+  "generatedAt": "2026-10-26T06:13:55.659Z",
+  "lastAttemptAt": "2026-10-26T06:10:00.360Z",
+  "lastSuccessfulScan": "2026-10-26T06:10:00.360Z",
+  "galleryUpdatedThrough": "2026-10-24T12:00:01.223",
   "advisoriesUpdatedAt": null,
   "bootstrap": {
     "complete": true,
@@ -12,7 +12,7 @@
     "startedAt": "2026-10-24T07:55:34.501Z"
   },
   "reconciliation": {
-    "afterId": "CommonStuff"
+    "afterId": "ConvertToPsd1"
   },
   "resultRefresh": {
     "id": "binary-dependency-2026-10",
@@ -35,150 +35,29 @@
   },
   "findingsRefresh": {
     "id": "finding-rules-0.3.0",
-    "active": true,
+    "active": false,
     "complete": false,
-    "afterKey": "microsoft.powershell.textutility@0.5.0",
-    "total": 18118,
-    "processed": 8900,
-    "succeeded": 8808,
-    "failed": 92,
-    "startedAt": "2026-10-26T01:00:16.660Z",
-    "updatedAt": "2026-10-26T06:05:29.040Z",
-    "completedAt": null,
-    "lastErrors": [
-      {
-        "key": "microsoft.graph.files@2.19.0",
-        "package": "Microsoft.Graph.Files",
-        "version": "2.19.0",
-        "error": "Expanded package size exceeds the configured 150 MiB limit."
-      },
-      {
-        "key": "microsoft.graph.files@2.23.0",
-        "package": "Microsoft.Graph.Files",
-        "version": "2.23.0",
-        "error": "Expanded package size exceeds the configured 150 MiB limit."
-      },
-      {
-        "key": "microsoft.graph.files@2.35.1",
-        "package": "Microsoft.Graph.Files",
-        "version": "2.35.1",
-        "error": "Expanded package size exceeds the configured 150 MiB limit."
-      },
-      {
-        "key": "microsoft.graph.files@2.38.1",
-        "package": "Microsoft.Graph.Files",
-        "version": "2.38.1",
-        "error": "Expanded package size exceeds the configured 150 MiB limit."
-      },
-      {
-        "key": "microsoft.graph.files@2.41.0",
-        "package": "Microsoft.Graph.Files",
-        "version": "2.41.0",
-        "error": "Expanded package size exceeds the configured 150 MiB limit."
-      },
-      {
-        "key": "microsoft.graph.files@2.41.2",
-        "package": "Microsoft.Graph.Files",
-        "version": "2.41.2",
-        "error": "Expanded package size exceeds the configured 150 MiB limit."
-      },
-      {
-        "key": "microsoft.graph.identity.governance@2.12.0",
-        "package": "Microsoft.Graph.Identity.Governance",
-        "version": "2.12.0",
-        "error": "A package file exceeds the 35 MiB per-file analysis limit."
-      },
-      {
-        "key": "microsoft.graph.identity.governance@2.19.0",
-        "package": "Microsoft.Graph.Identity.Governance",
-        "version": "2.19.0",
-        "error": "A package file exceeds the 35 MiB per-file analysis limit."
-      },
-      {
-        "key": "microsoft.graph.identity.governance@2.2.0",
-        "package": "Microsoft.Graph.Identity.Governance",
-        "version": "2.2.0",
-        "error": "A package file exceeds the 35 MiB per-file analysis limit."
-      },
-      {
-        "key": "microsoft.graph.identity.governance@2.23.0",
-        "package": "Microsoft.Graph.Identity.Governance",
-        "version": "2.23.0",
-        "error": "A package file exceeds the 35 MiB per-file analysis limit."
-      },
-      {
-        "key": "microsoft.graph.identity.governance@2.34.0",
-        "package": "Microsoft.Graph.Identity.Governance",
-        "version": "2.34.0",
-        "error": "A package file exceeds the 35 MiB per-file analysis limit."
-      },
-      {
-        "key": "microsoft.graph.identity.governance@2.35.1",
-        "package": "Microsoft.Graph.Identity.Governance",
-        "version": "2.35.1",
-        "error": "A package file exceeds the 35 MiB per-file analysis limit."
-      },
-      {
-        "key": "microsoft.graph.identity.governance@2.38.1",
-        "package": "Microsoft.Graph.Identity.Governance",
-        "version": "2.38.1",
-        "error": "A package file exceeds the 35 MiB per-file analysis limit."
-      },
-      {
-        "key": "microsoft.graph.identity.governance@2.41.2",
-        "package": "Microsoft.Graph.Identity.Governance",
-        "version": "2.41.2",
-        "error": "Expanded package size exceeds the configured 150 MiB limit."
-      },
-      {
-        "key": "microsoft.graph.sites@2.12.0",
-        "package": "Microsoft.Graph.Sites",
-        "version": "2.12.0",
-        "error": "A package file exceeds the 35 MiB per-file analysis limit."
-      },
-      {
-        "key": "microsoft.graph.sites@2.2.0",
-        "package": "Microsoft.Graph.Sites",
-        "version": "2.2.0",
-        "error": "A package file exceeds the 35 MiB per-file analysis limit."
-      },
-      {
-        "key": "microsoft.graph.sites@2.38.1",
-        "package": "Microsoft.Graph.Sites",
-        "version": "2.38.1",
-        "error": "A package file exceeds the 35 MiB per-file analysis limit."
-      },
-      {
-        "key": "microsoft.graph.sites@2.41.2",
-        "package": "Microsoft.Graph.Sites",
-        "version": "2.41.2",
-        "error": "A package file exceeds the 35 MiB per-file analysis limit."
-      },
-      {
-        "key": "microsoft.graph.teams@2.38.1",
-        "package": "Microsoft.Graph.Teams",
-        "version": "2.38.1",
-        "error": "A package file exceeds the 35 MiB per-file analysis limit."
-      },
-      {
-        "key": "microsoft.graph.teams@2.41.2",
-        "package": "Microsoft.Graph.Teams",
-        "version": "2.41.2",
-        "error": "A package file exceeds the 35 MiB per-file analysis limit."
-      }
-    ]
+    "afterKey": "",
+    "total": 0,
+    "processed": 0,
+    "succeeded": 0,
+    "failed": 0,
+    "lastErrors": [],
+    "startedAt": null,
+    "updatedAt": null,
+    "completedAt": null
   },
   "freshnessWindowHours": 6,
   "coverage": {
     "listedPackages": 16896,
     "scannedLatestVersions": 16896,
-    "scannedVersions": 18118,
-    "incompleteVersions": 461,
+    "scannedVersions": 18170,
+    "incompleteVersions": 471,
     "unscannedLatestVersions": 0,
-    "notScannedVersions": 622757,
-    "binaryFiles": 75558,
-    "binaryFilesChecked": 75499,
-    "binaryFilesPending": 59,
+    "notScannedVersions": 622706,
+    "binaryFiles": 75599,
+    "binaryFilesChecked": 75532,
+    "binaryFilesPending": 67,
     "binaryScanErrors": 0,
     "missingGalleryDependencies": 638
   },
@@ -314,18 +193,18 @@
     "state/62.json.gz",
     "state/63.json.gz"
   ],
-  "notice": "",
+  "notice": "The daily advisory refresh is in progress. Previously published findings remain available.",
   "sourceStatus": "available",
   "lastBatch": {
-    "attemptedAt": "2026-10-26T00:54:59.131Z",
-    "packageVersionsProcessed": 0,
-    "packageVersionsSkipped": 1199,
+    "attemptedAt": "2026-10-26T06:10:00.360Z",
+    "packageVersionsProcessed": 52,
+    "packageVersionsSkipped": 1148,
     "resultRefreshProcessed": 0,
     "resultRefreshComplete": true,
     "resultRefreshRemaining": 0,
     "bootstrapComplete": true,
-    "advisoryRecordsRefreshed": 0,
-    "advisoryRefreshRemaining": 0
+    "advisoryRecordsRefreshed": 500,
+    "advisoryRefreshRemaining": 17135
   },
-  "advisoryRefreshCursor": "anypackage.homebrew@0.0.1"
+  "advisoryRefreshCursor": "aws.tools.common@4.1.581"
 }
