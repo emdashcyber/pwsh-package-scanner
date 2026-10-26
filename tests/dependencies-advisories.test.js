@@ -32,6 +32,30 @@ test('dependency graph distinguishes Gallery-missing packages from unsupported r
   assert.equal(graph.dependencies[1].relation, 'requires');
 });
 
+test('exact Gallery versions are queried directly when the version listing has no match', async () => {
+  const calls = [];
+  const graph = await resolveDependencyGraph([{ name: 'AWS.Tools.Common', versionRange: '[5.0.322]' }], {
+    listPackageVersions: async (name) => { calls.push(['list', name]); return [{ version: '5.0.321' }]; },
+    getPackageVersion: async (name, version) => {
+      calls.push(['exact', name, version]);
+      return { name, version, dependencies: [] };
+    },
+  });
+  assert.equal(graph.complete, true);
+  assert.equal(graph.dependencies[0].status, 'resolved');
+  assert.equal(graph.dependencies[0].resolvedVersion, '5.0.322');
+  assert.deepEqual(calls, [['list', 'AWS.Tools.Common'], ['exact', 'AWS.Tools.Common', '5.0.322']]);
+});
+
+test('known inbox modules are recorded as platform modules without missing-package findings', async () => {
+  const graph = await resolveDependencyGraph([{ name: 'Microsoft.PowerShell.Core', versionRange: '*' }], {
+    listPackageVersions: async () => { throw new Error('Platform modules should not query Gallery'); },
+  });
+  assert.equal(graph.complete, true);
+  assert.equal(graph.dependencies[0].status, 'platform_module');
+  assert.equal(graph.dependencies[0].sourceEcosystem, 'PowerShell');
+});
+
 test('dependency graph records a missing Gallery package only after a successful lookup', async () => {
   const graph = await resolveDependencyGraph([{ name: 'Missing', versionRange: '*' }], {
     listPackageVersions: async () => [],

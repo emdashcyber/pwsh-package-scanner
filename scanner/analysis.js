@@ -49,13 +49,15 @@ function runProcess(command, args, options = {}) {
 
 export async function runPSScriptAnalyzer(files, { enabled = true, pwsh = process.env.PWSH_PATH || 'pwsh' } = {}) {
   if (!enabled) return { findings: [], complete: true, analyzerVersion: null, powerShellVersion: null };
-  const scripts = files.filter((file) => file.kind === 'script' && file.text.length > 0);
+  const scripts = files.filter((file) => file.kind === 'script'
+    && file.text.length > 0
+    && /\.(?:ps1|psm1|psd1)$/i.test(file.path));
   if (!scripts.length) return { findings: [], complete: true, analyzerVersion: null, powerShellVersion: null };
   const root = await mkdtemp(join(tmpdir(), 'gallery-static-'));
   const mapping = [];
   try {
     for (let i = 0; i < scripts.length; i++) {
-      const ext = (scripts[i].path.match(/\.(ps1|psm1|psd1|ps1xml|pssc)$/i) || [null, 'ps1'])[1].toLowerCase();
+      const ext = (scripts[i].path.match(/\.(ps1|psm1|psd1)$/i) || [null, 'ps1'])[1].toLowerCase();
       const safeName = 'file-' + String(i + 1).padStart(5, '0') + '.' + ext;
       await writeFile(join(root, safeName), scripts[i].text, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
       mapping.push({ safeName, originalPath: scripts[i].path });
@@ -90,6 +92,7 @@ export async function runPSScriptAnalyzer(files, { enabled = true, pwsh = proces
     const findings = Array.isArray(payload) ? payload : payload.findings;
     return {
       findings: Array.isArray(findings) ? findings : [],
+      warnings: Array.isArray(payload.warnings) ? payload.warnings : [],
       complete: true,
       analyzerVersion: payload.psscriptAnalyzerVersion || ANALYZER_VERSION,
       powerShellVersion: payload.powerShellVersion || null,

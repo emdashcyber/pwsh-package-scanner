@@ -12,6 +12,7 @@
     "scan:bootstrap:local": "node scripts/scan-gallery.js --bootstrap-local",
     "scan:recover-incomplete": "node scripts/scan-gallery.js --recover-incomplete",
     "scan:recover-incomplete:restart": "node scripts/scan-gallery.js --recover-incomplete --restart",
+    "scan:refresh-findings": "node scripts/refresh-findings.js",
     "test": "node --test \"tests/**/*.test.js\"",
     "check": "npm test && npm --prefix site run check"
   }

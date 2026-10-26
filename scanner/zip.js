@@ -42,7 +42,11 @@ function safeArchivePath(name) {
 }
 
 function isScript(name) {
-  return /\.(?:ps1|psm1|psd1|ps1xml|pssc)$/i.test(name);
+  return /\.(?:ps1|psm1|psd1|pssc)$/i.test(name);
+}
+
+function isPowerShellFormatXml(name) {
+  return /\.ps1xml$/i.test(name);
 }
 
 function isBinary(name) {
@@ -64,7 +68,7 @@ function readUtf8Name(buffer, start, length, utf8) {
   return buffer.subarray(start, start + length).toString(utf8 ? 'utf8' : 'latin1');
 }
 
-export function inspectNupkg(buffer, limits = ARCHIVE_LIMITS) {
+export function inspectNupkg(buffer, limits = ARCHIVE_LIMITS, { includeBinaries = true } = {}) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 22) throw new Error('Package archive is too small to be a ZIP file.');
   if (buffer.length > limits.compressedBytes) {
     throw new Error('Package archive exceeds the configured ' + Math.ceil(limits.compressedBytes / (1024 * 1024)) + ' MiB compressed-size limit.');
@@ -138,7 +142,9 @@ export function inspectNupkg(buffer, limits = ARCHIVE_LIMITS) {
 
     const isNuspec = normalized.toLocaleLowerCase('en-US').endsWith('.nuspec');
     const binary = !directory && validPath && !duplicate && isBinary(normalized);
-    const eligible = !directory && validPath && !duplicate && (isScript(normalized) || isNuspec || binary);
+    const formatXml = isPowerShellFormatXml(normalized);
+    const eligible = !directory && validPath && !duplicate
+      && (isScript(normalized) || formatXml || isNuspec || (binary && includeBinaries));
     if (eligible) {
       if (uncompressedSize > limits.entryBytes) {
         result.complete = false;
@@ -194,7 +200,7 @@ export function inspectNupkg(buffer, limits = ARCHIVE_LIMITS) {
         result.files.push({
           path: normalized,
           size: uncompressedSize,
-          kind: isNuspec ? 'nuspec' : 'script',
+          kind: isNuspec ? 'nuspec' : formatXml ? 'xml' : 'script',
           text: decodeText(body),
         });
       }

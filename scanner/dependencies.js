@@ -1,8 +1,45 @@
 import { dedupeDependencies } from './xml.js';
-import { compareVersions, versionMatchesRange } from './versions.js';
+import { compareVersions, parseNugetRange, versionMatchesRange } from './versions.js';
 
 const MAX_DEPENDENCY_DEPTH = 5;
 const MAX_DEPENDENCY_NODES = 100;
+
+const PLATFORM_MODULES = new Set([
+  'microsoft.powershell.utility',
+  'microsoft.powershell.management',
+  'microsoft.powershell.core',
+  'microsoft.powershell.security',
+  'microsoft.powershell.diagnostics',
+  'microsoft.powershell.archive',
+  'microsoft.powershell.host',
+  'microsoft.powershell.consolehost',
+  'microsoft.wsman.management',
+  'appx',
+  'bitstransfer',
+  'cimcmdlets',
+  'configurationmanager',
+  'configmanager',
+  'dnsclient',
+  'dnsserver',
+  'failoverclusters',
+  'grouppolicy',
+  'hyper-v',
+  'netadapter',
+  'nettcpip',
+  'pki',
+  'smbshare',
+  'storage',
+  'webadministration',
+]);
+
+function exactRangeVersion(range) {
+  const parsed = parseNugetRange(range || '*');
+  if (parsed?.length !== 1) return null;
+  const interval = parsed[0];
+  return interval.min && interval.max === interval.min && interval.includeMin && interval.includeMax
+    ? interval.min
+    : null;
+}
 
 export async function resolveDependencyGraph(declaredDependencies, gallery, {
   maxDepth = MAX_DEPENDENCY_DEPTH,
@@ -42,6 +79,12 @@ export async function resolveDependencyGraph(declaredDependencies, gallery, {
       resolved.push(record);
       continue;
     }
+    if (PLATFORM_MODULES.has(current.name.toLocaleLowerCase('en-US'))) {
+      record.status = 'platform_module';
+      record.sourceEcosystem = 'PowerShell';
+      resolved.push(record);
+      continue;
+    }
     if (current.depth > maxDepth) {
       record.status = 'depth_limit';
       incomplete = true;
@@ -64,19 +107,31 @@ export async function resolveDependencyGraph(declaredDependencies, gallery, {
       resolved.push(record);
       continue;
     }
-    if (!available.length) {
-      record.status = 'package_not_found';
-      resolved.push(record);
-      continue;
-    }
-    const candidates = available
+    const candidates = (available || [])
       .filter((item) => item.version)
       .filter((item) => versionMatchesRange(item.version, current.versionRange || '*') === true)
       .map((item) => item.version);
     candidates.sort(compareVersions);
-    const selected = candidates.at(-1);
+    let selected = candidates.at(-1);
+    let exactRecord = null;
+    const exactVersion = exactRangeVersion(current.versionRange);
+    if (!selected && exactVersion && typeof gallery.getPackageVersion === 'function') {
+      try {
+        exactRecord = await gallery.getPackageVersion(current.name, exactVersion);
+        if (exactRecord?.version && versionMatchesRange(exactRecord.version, current.versionRange) === true) {
+          selected = exactRecord.version;
+        }
+      } catch (error) {
+        if (error?.status !== 404) {
+          record.status = 'gallery_unavailable';
+          incomplete = true;
+          resolved.push(record);
+          continue;
+        }
+      }
+    }
     if (!selected) {
-      record.status = 'no_matching_version';
+      record.status = available.length ? 'no_matching_version' : 'package_not_found';
       resolved.push(record);
       continue;
     }
@@ -84,7 +139,9 @@ export async function resolveDependencyGraph(declaredDependencies, gallery, {
     record.resolvedVersion = selected;
     resolved.push(record);
 
-    const selectedRecord = available.find((item) => item.version === selected);
+    const selectedRecord = exactRecord?.version === selected
+      ? exactRecord
+      : available.find((item) => item.version === selected);
     if (selectedRecord?.dependencies?.length) {
       for (const dependency of selectedRecord.dependencies) {
         if (resolved.length + queue.length >= maxNodes) {

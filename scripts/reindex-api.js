@@ -6,14 +6,16 @@ let binaryPending = 0;
 function canonicalFindingId(finding) {
   if (finding.category === 'advisory' && finding.advisoryId) return 'ADVISORY-' + finding.advisoryId;
   if (/^PSG-SUPPLY-002(?:-|$)/.test(finding.id || '')) return 'PSG-SUPPLY-002';
-  if (/^PSG-SUPPLY-004(?:-|$)/.test(finding.id || '')) return 'PSG-SUPPLY-004';
+  if (/^PSG-SUPPLY-004(?:-|$)/.test(finding.id || '')) return null;
   return finding.id;
 }
 
 for (const record of state.packages.values()) {
   for (const version of record.versions || []) {
     if (version.assessment === 'not_scanned') continue;
-    for (const finding of version.findings || []) finding.id = canonicalFindingId(finding);
+    version.findings = (version.findings || [])
+      .map((finding) => ({ ...finding, id: canonicalFindingId(finding) }))
+      .filter((finding) => finding.id);
     version.dependencies = Array.isArray(version.dependencies) ? version.dependencies : [];
     version.binaryArtifacts = Array.isArray(version.binaryArtifacts) ? version.binaryArtifacts : [];
     version.tools = { ...(version.tools || {}), clamav: version.tools?.clamav || null };

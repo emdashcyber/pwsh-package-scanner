@@ -68,6 +68,35 @@
           "bootstrap": { "type": "object", "properties": { "complete": { "type": "boolean" }, "afterId": { "type": "string" }, "startedAt": { "type": ["string", "null"], "format": "date-time" } } },
           "reconciliation": { "type": "object", "properties": { "afterId": { "type": "string" } } },
           "resultRefresh": { "type": "object", "properties": { "id": { "type": "string" }, "complete": { "type": "boolean" }, "afterKey": { "type": "string" }, "total": { "type": "integer", "minimum": 0 } } },
+          "findingsRefresh": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "active": { "type": "boolean" },
+              "complete": { "type": "boolean" },
+              "afterKey": { "type": "string" },
+              "total": { "type": "integer", "minimum": 0 },
+              "processed": { "type": "integer", "minimum": 0 },
+              "succeeded": { "type": "integer", "minimum": 0 },
+              "failed": { "type": "integer", "minimum": 0 },
+              "lastErrors": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": { "type": "string" },
+                    "package": { "type": "string" },
+                    "version": { "type": "string" },
+                    "error": { "type": "string" }
+                  }
+                }
+              },
+              "startedAt": { "type": ["string", "null"], "format": "date-time" },
+              "updatedAt": { "type": ["string", "null"], "format": "date-time" },
+              "completedAt": { "type": ["string", "null"], "format": "date-time" }
+            }
+          },
           "coverage": { "$ref": "#/components/schemas/Coverage" },
           "shards": { "type": "array", "items": { "type": "string", "pattern": "^shards/[0-9a-f]{2}\\.json$" } },
           "stateShards": { "type": "array", "items": { "type": "string", "pattern": "^state/[0-9a-f]{2}\\.json\\.gz$" } },

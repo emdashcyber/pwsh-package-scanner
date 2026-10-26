@@ -1,0 +1,176 @@
+name: Refresh PowerShell findings
+
+on:
+  workflow_dispatch:
+    inputs:
+      resume_run_id:
+        description: Run ID of an interrupted findings refresh to resume from
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gallery-research-scan
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 330
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      - name: Install PowerShell 7.6.8
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/powershell-7.6.8-linux-x64.tar.gz"
+          install_dir="$RUNNER_TEMP/pwsh-7.6.8"
+          curl --fail --location --silent --show-error "https://github.com/PowerShell/PowerShell/releases/download/v7.6.8/powershell-7.6.8-linux-x64.tar.gz" --output "$archive"
+          printf '%s  %s\n' '59112E38AD83350E4F6DC0195953C66B5926792F300CA2E7691B8242E7A16E7F' "$archive" | sha256sum --check -
+          mkdir -p "$install_dir"
+          tar -xzf "$archive" -C "$install_dir"
+          chmod +x "$install_dir/pwsh"
+          echo "$install_dir" >> "$GITHUB_PATH"
+          echo "PWSH_PATH=$install_dir/pwsh" >> "$GITHUB_ENV"
+
+      - name: Install pinned PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $modulePath = Join-Path $env:RUNNER_TEMP 'ps-modules'
+          New-Item -ItemType Directory -Force -Path $modulePath | Out-Null
+          Save-PSResource -Name PSScriptAnalyzer -Version 1.25.0 -Repository PSGallery -Path $modulePath -TrustRepository
+          "PSSCRIPTANALYZER_MODULE_PATH=$modulePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PowerShell: $($PSVersionTable.PSVersion) · PSScriptAnalyzer: $((Get-Module -ListAvailable PSScriptAnalyzer | Where-Object Version -eq '1.25.0' | Select-Object -First 1).Version)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Download prior findings checkpoint
+        if: ${{ inputs.resume_run_id != '' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: findings-refresh-checkpoint
+          path: ${{ runner.temp }}/prior-findings-refresh
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Refresh assessed package versions
+        id: refresh
+        timeout-minutes: 315
+        env:
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--artifact-only --checkpoint-dir "$RUNNER_TEMP/findings-refresh" --max-minutes 300 --batch-size 100)
+          if [[ -n "$RESUME_RUN_ID" ]]; then args+=(--resume-dir "$RUNNER_TEMP/prior-findings-refresh"); fi
+          node scripts/refresh-findings.js "${args[@]}"
+
+      - name: Upload resumable findings checkpoint
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: findings-refresh-checkpoint
+          path: ${{ runner.temp }}/findings-refresh
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 1
+
+      - name: Record resume instructions
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          {
+            echo "Findings refresh workflow run ID: $GITHUB_RUN_ID"
+            echo 'A successful time-limited pass publishes its completed version updates and progress to main. Dispatch this workflow again without a resume ID to continue from that published state.'
+            echo 'If this run failed before publishing, dispatch again with this run ID in `resume_run_id` to restore its last uploaded checkpoint artifact.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    needs: refresh
+    if: ${{ needs.refresh.result == 'success' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      actions: read
+      contents: write
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: findings-refresh-checkpoint
+          path: ${{ runner.temp }}/findings-refresh-checkpoint
+
+      - name: Merge updates into current snapshot and commit
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/merge-findings-refresh-checkpoint.js "$RUNNER_TEMP/findings-refresh-checkpoint" site/public
+          node scripts/validate-api-snapshot.js site/public/api/v1
+          git add site/public/api/v1
+          if git diff --cached --quiet -- site/public/api/v1; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'No findings data changed.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Refresh PowerShell package findings'
+          git push origin HEAD:main
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+          echo 'Merged refreshed findings into the latest main snapshot.' >> "$GITHUB_STEP_SUMMARY"
+
+  build-and-deploy:
+    needs: publish
+    if: ${{ needs.publish.outputs.changed == 'true' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - run: npm ci --prefix site --ignore-scripts --no-audit --no-fund
+      - run: npm run build --prefix site
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build-and-deploy
+    runs-on: ubuntu-26.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

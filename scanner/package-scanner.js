@@ -10,7 +10,7 @@ import { nowIso, sha256, safeString, normalizePackageName } from './util.js';
 import { dedupeDependencies } from './xml.js';
 
 export const SCANNER_VERSION = '0.2.0';
-export const RULESET_VERSION = '0.2.0';
+export const RULESET_VERSION = '0.3.0';
 
 function emptyVersionRecord(item, status = 'incomplete', message = '') {
   return {
@@ -79,25 +79,6 @@ function compareVersionChanges(item, current, previous) {
     });
   }
 
-  for (const file of currentFiles.filter((entry) => previousFiles.has(entry.path)
-    && (previousFiles.get(entry.path).size !== entry.size || previousFiles.get(entry.path).crc32 !== entry.crc32)).slice(0, 20)) {
-    const before = previousFiles.get(file.path);
-    findings.push({
-      id: 'PSG-SUPPLY-004',
-      category: 'supply_chain',
-      severity: 'low',
-      confidence: 'high',
-      title: 'Package file changed between versions',
-      description: 'The file size or ZIP checksum differs from the preceding complete version. Review the source change in context.',
-      evidence: {
-        file: file.path,
-        line: null,
-        snippet: 'Previous size/checksum: ' + before.size + '/' + before.crc32 + ' · Current: ' + file.size + '/' + file.crc32,
-      },
-      references: [item.packageUrl],
-    });
-  }
-
   const previousDeps = new Set((previous.dependencies || []).map((dep) => normalizePackageName(dep.name) + '@' + (dep.versionRange || '*')));
   const currentDeps = new Set((current.dependencies || []).map((dep) => normalizePackageName(dep.name) + '@' + (dep.versionRange || '*')));
   const addedDeps = [...currentDeps].filter((dep) => !previousDeps.has(dep));
@@ -127,6 +108,26 @@ function dedupeFindings(items) {
     seen.add(key);
     return true;
   });
+}
+
+export function isPowerShellFinding(finding) {
+  return /^PSSA-/.test(finding?.id || '')
+    || /^PSG-(?:SECRET-00[12]|BEHAVIOR-00[1-5])$/.test(finding?.id || '');
+}
+
+export async function analyzePowerShellFindings(files, { runPssa = true } = {}) {
+  const scripts = (files || []).filter((file) => file.kind === 'script' && !/\.ps1xml$/i.test(file.path || ''));
+  const behaviorFindings = analyzePowerShellBehavior(scripts);
+  const pssa = await runPSScriptAnalyzer(scripts, { enabled: runPssa });
+  const pssaFindings = normalizePSScriptAnalyzerFindings(pssa.findings, scripts);
+  return {
+    findings: dedupeFindings([...behaviorFindings, ...pssaFindings]),
+    complete: pssa.complete,
+    analyzerVersion: pssa.analyzerVersion || null,
+    powerShellVersion: pssa.powerShellVersion || null,
+    warnings: pssa.warnings || [],
+    error: pssa.error || null,
+  };
 }
 
 function dependencyFindings(dependencies, packageUrl) {
@@ -194,9 +195,7 @@ export async function scanGalleryPackage(item, gallery, {
   }
 
   const scripts = archive.files.filter((file) => file.kind === 'script');
-  const behaviorFindings = analyzePowerShellBehavior(scripts);
-  const pssa = await runPSScriptAnalyzer(scripts, { enabled: runPssa });
-  const pssaFindings = normalizePSScriptAnalyzerFindings(pssa.findings, scripts);
+  const powerShellAnalysis = await analyzePowerShellFindings(scripts, { runPssa });
   const requirements = parsePowerShellRequirements(scripts);
   const galleryDependencies = nuspec.dependencies.length ? nuspec.dependencies : item.dependencies || [];
   const declaredDependencies = dedupeDependencies([
@@ -271,8 +270,8 @@ export async function scanGalleryPackage(item, gallery, {
     scannerVersion: SCANNER_VERSION,
     rulesetVersion: RULESET_VERSION,
     tools: {
-      powerShell: pssa.powerShellVersion || null,
-      psscriptAnalyzer: pssa.analyzerVersion || null,
+      powerShell: powerShellAnalysis.powerShellVersion || null,
+      psscriptAnalyzer: powerShellAnalysis.analyzerVersion || null,
       psscriptAnalyzerExpected: '1.25.0',
       clamav: binaryAnalysis.binaries.map((binary) => ({
         engineVersion: binary.clamav.engineVersion,
@@ -295,8 +294,7 @@ export async function scanGalleryPackage(item, gallery, {
     binaryArtifacts: binaryAnalysis.binaries,
     fileInventory: archive.inventory,
     findings: dedupeFindings([
-      ...behaviorFindings,
-      ...pssaFindings,
+      ...powerShellAnalysis.findings,
       ...binaryFindings,
       ...dependencyFindings(dependencyAnalysis.dependencies, packageUrl),
       ...advisoryAnalysis.findings,
@@ -309,7 +307,7 @@ export async function scanGalleryPackage(item, gallery, {
     ]),
     coverage: {
       archive: archive.complete,
-      powerShellAnalysis: pssa.complete,
+      powerShellAnalysis: powerShellAnalysis.complete,
       dependencyResolution: dependencyAnalysis.complete,
       advisories: advisoryAnalysis.complete,
       binaryScanning: binaryAnalysis.complete,
@@ -321,15 +319,16 @@ export async function scanGalleryPackage(item, gallery, {
     advisoryError: advisoryAnalysis.error,
     warnings: [
       ...archive.warnings,
-      ...(pssa.error ? [pssa.error] : []),
+      ...(powerShellAnalysis.error ? [powerShellAnalysis.error] : []),
+      ...powerShellAnalysis.warnings,
       ...(advisoryAnalysis.error ? [advisoryAnalysis.error] : []),
       ...binaryAnalysis.binaries.filter((binary) => binary.clamav.status === 'error')
         .map((binary) => 'ClamAV could not scan ' + binary.path + ': ' + (binary.clamav.error || 'unknown scanner error')),
     ]
       .map((message) => safeString(message, 800)).slice(0, 20),
   };
-  if (!archive.complete || !pssa.complete || !dependencyAnalysis.complete || !advisoryAnalysis.complete || !binaryAnalysis.complete) result.assessment = 'incomplete';
-  if (!scripts.length && pssa.complete) result.coverage.powerShellAnalysis = true;
+  if (!archive.complete || !powerShellAnalysis.complete || !dependencyAnalysis.complete || !advisoryAnalysis.complete || !binaryAnalysis.complete) result.assessment = 'incomplete';
+  if (!scripts.length && powerShellAnalysis.complete) result.coverage.powerShellAnalysis = true;
   log({
     package: item.name,
     version: item.version,

@@ -12,6 +12,8 @@ test('static API manifest matches its OpenAPI coverage and assessment contract',
   assert.equal(manifest.freshnessWindowHours, 6);
   assert.equal(typeof manifest.resultRefresh.complete, 'boolean');
   assert.ok(manifestSchema.properties.status.enum.includes(manifest.status));
+  assert.equal(manifestSchema.properties.findingsRefresh.properties.active.type, 'boolean');
+  assert.equal(manifestSchema.properties.findingsRefresh.properties.processed.type, 'integer');
   for (const field of coverageSchema.required) assert.ok(field in manifest.coverage, 'missing coverage field ' + field);
   assert.deepEqual(openapi.components.schemas.Assessment.enum, ['complete', 'incomplete', 'not_scanned']);
   assert.ok(openapi.paths['/manifest.json']);
